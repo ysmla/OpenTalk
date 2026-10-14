@@ -85,7 +85,7 @@ operation('patch','/contents/{content_id}','editContent','编辑自己的内容'
 operation('delete','/contents/{content_id}','deleteContent','连带软删除内容','DeletionResult',description='作者删除自己内容或管理员删除。问题删除全部回答与评论；帖子/回答删除下属评论；评论沿真实回复树删除后代。原文30天审核保留，重复删除不延长期限。')
 operation('patch','/questions/{topic_id}/resolution','setResolution','切换问题解决状态','QuestionTopic','SetResolutionRequest',description='仅提问者。solved禁止所有新增回答、评论和回复，与新增和删除使用同一根主题锁。')
 operation('get','/questions/{topic_id}/answers','listAnswers','读取问题回答','ContentPage',auth='public',params=pagination)
-operation('post','/answers','createAnswer','发布回答','Answer','CreateAnswerRequest',status='201',description='根问题必须open。匿名提问者自答强制匿名并显示楼主。')
+operation('post','/answers','createAnswer','发布回答','Answer','CreateAnswerRequest',status='201',description='根问题必须open。匿名提问者自答强制匿名并显示楼主。',implemented=True)
 operation('get','/topics/{topic_id}/comments','listComments','读取主题或回答评论','ContentPage',auth='public',params=pagination+[query('answer_id',{'type':'string'},'省略时读取主题评论'),query('parent_comment_id',{'type':'string'},'省略读取顶层；填写读取该串回复')])
 operation('post','/comments','createComment','发布评论或回复','Comment','CreateCommentRequest',status='201',description='匿名楼主强制匿名并显示楼主；解决、锁定、隐藏、删除状态均须检查根主题及目标祖先。')
 operation('get','/search','searchContents','搜索公开内容','ContentPage',auth='public',params=pagination+[query('q',{'type':'string','minLength':1}),query('board_id',{'type':'string'}),query('tag_id',{'type':'string'})],description='只检索可见原文，不能检索审核归档；中文搜索策略仍需语料验证。q必须填写。')
