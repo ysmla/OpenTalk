@@ -2,6 +2,7 @@ package content
 
 import (
 	"context"
+	"crypto/sha256"
 	"database/sql"
 	"errors"
 	"net/http"
@@ -117,19 +118,35 @@ func (d Deps) uploadImage(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// attachmentReadable decides whether one stored image may be served.
-//
-// Knowing the key is not enough. A key is unguessable, but an image belonging to deleted or hidden
-// content must stop being served at once, without waiting for the cleanup job. A pending image is served
-// while its pending window lasts, which covers the compose preview; after that it is nobody's.
+// attachmentReadable decides whether one stored image may be served to an anonymous reader. It is the
+// owner-less form of attachmentReadableFor, kept for callers that have no session at all.
 func (s Store) attachmentReadable(ctx context.Context, key string) (bool, string, error) {
+	return s.attachmentReadableFor(ctx, key, 0)
+}
+
+// attachmentReadableFor decides whether one stored image may be served to a specific viewer. A viewerID
+// of 0 means an anonymous reader.
+//
+// Knowing the key is not enough, and neither is the state of the row the image is attached to.
+//
+//   - A pending image has not been published yet: it exists only so the author can preview what they are
+//     about to attach. Only the owner may read it, and only while its pending window lasts. Without the
+//     owner check any visitor holding the link could read material the author never published, and the
+//     unguessable key would be doing the work of an authorization decision.
+//   - An active image is published, so it is readable while the content that shows it is still visible.
+//     That means the whole ancestor chain, not just the row that references the image: an answer or a
+//     comment is shown inside its topic, so hiding or deleting the root topic has to hide the image too,
+//     even though the answer row itself is still 'visible'. For an answer or a comment the innermost
+//     topic join below resolves the root, which makes one predicate cover every kind of content.
+func (s Store) attachmentReadableFor(ctx context.Context, key string, viewerID uint64) (bool, string, error) {
 	var mimeType string
 	var status string
+	var ownerID uint64
 	var expired bool
-	err := s.DB.QueryRowContext(ctx, `SELECT mime_type,status,
+	err := s.DB.QueryRowContext(ctx, `SELECT mime_type,status,owner_id,
  COALESCE(delete_after IS NOT NULL AND delete_after<=UTC_TIMESTAMP(6), FALSE)
 FROM attachments WHERE storage_key=? AND status IN ('pending','active')`, key).
-		Scan(&mimeType, &status, &expired)
+		Scan(&mimeType, &status, &ownerID, &expired)
 	if errors.Is(err, sql.ErrNoRows) {
 		return false, "", nil
 	}
@@ -137,29 +154,45 @@ FROM attachments WHERE storage_key=? AND status IN ('pending','active')`, key).
 		return false, "", err
 	}
 	if status == "pending" {
-		return !expired, mimeType, nil
+		return !expired && viewerID != 0 && viewerID == ownerID, mimeType, nil
 	}
 	// Active means it was attached to something, so at least one referencing content row must still be
-	// publicly visible.
+	// reachable through a fully visible chain.
+	//
+	// The referencing row is identified first and its ancestor is resolved from it. Only one of the three
+	// tables can match, so their three joins are LEFT joins and the non-null one names the root. Joining
+	// topics first and then the others would be wrong: a topic join on an answer row finds nothing, and
+	// the answer's image would be refused even while the whole discussion is public.
 	var visible bool
 	if err := s.DB.QueryRowContext(ctx, `SELECT EXISTS(
- SELECT 1 FROM content_attachments ca JOIN contents c ON c.id=ca.content_id
+ SELECT 1 FROM content_attachments ca
+ JOIN contents c ON c.id=ca.content_id
+ LEFT JOIN topics t ON t.content_id=c.id
+ LEFT JOIN answers a ON a.content_id=c.id
+ LEFT JOIN comments m ON m.content_id=c.id
+ JOIN contents root ON root.id=COALESCE(t.content_id,a.question_id,m.topic_id)
  WHERE ca.attachment_id=(SELECT id FROM attachments WHERE storage_key=?)
- AND c.deleted_at IS NULL AND c.moderation_status='visible')`, key).Scan(&visible); err != nil {
+ AND c.deleted_at IS NULL AND c.moderation_status='visible'
+ AND root.deleted_at IS NULL AND root.moderation_status='visible')`, key).Scan(&visible); err != nil {
 		return false, "", err
 	}
 	return visible, mimeType, nil
 }
 
 // getImage serves one stored image. The route is public because images are embedded in public content,
-// but the database decides every request: the key alone grants nothing.
+// but the database decides every request: the key alone grants nothing, and a session turns an anonymous
+// reader into the owner for their own not-yet-published uploads.
 func (d Deps) getImage(w http.ResponseWriter, r *http.Request) {
 	if d.Media == nil {
 		d.failDependency(w, r, errors.New("media store is not configured"))
 		return
 	}
 	key := r.PathValue("key")
-	allowed, mimeType, err := d.Store.attachmentReadable(r.Context(), key)
+	// Reading an image must never require a login, so a missing, invalid or expired session is simply an
+	// anonymous reader instead of an error. This is resolved on every request, including image loads, so
+	// the lookup has to stay a single indexed read of the sessions table.
+	viewerID := d.viewerID(r)
+	allowed, mimeType, err := d.Store.attachmentReadableFor(r.Context(), key, viewerID)
 	if err != nil {
 		d.failDependency(w, r, err)
 		return
@@ -179,6 +212,26 @@ func (d Deps) getImage(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", mimeType)
 	// The key never changes content, but a deletion must take effect promptly, so the browser is told to
 	// revalidate. Revalidation after a deletion hits the check above and receives 404, which drops it.
+	// The response varies by session now, so a shared cache must not reuse an owner's response for a
+	// guest — the session cookie is part of the cache key.
 	w.Header().Set("Cache-Control", "private, no-cache")
+	w.Header().Add("Vary", "Cookie")
 	http.ServeContent(w, r, key, time.Time{}, file)
+}
+
+// viewerID resolves the optional session behind the request. It reports 0 for every anonymous reader,
+// including one whose cookie is stale or malformed: a reader who is not signed in is not an error.
+func (d Deps) viewerID(r *http.Request) uint64 {
+	if d.Sessions == nil {
+		return 0
+	}
+	raw, ok := auth.RawFromRequest(r)
+	if !ok {
+		return 0
+	}
+	principal, err := d.Sessions.Lookup(r.Context(), sha256.Sum256([]byte(raw)))
+	if err != nil {
+		return 0
+	}
+	return principal.UserID
 }

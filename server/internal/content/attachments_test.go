@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"image"
 	"image/color"
+	_ "image/gif"
+	_ "image/jpeg"
 	"image/png"
 	"mime/multipart"
 	"net/http/httptest"
@@ -59,12 +61,32 @@ func (e *topicEnv) upload(payload []byte, filename, cookie, csrf string) respons
 	return response{status: recorder.Code, body: recorder.Body.Bytes()}
 }
 
-// fetchImage reads a stored image through the public media route.
+// fetchImage reads a stored image through the public media route as an anonymous visitor.
 func (e *topicEnv) fetchImage(key string) response {
 	e.t.Helper()
+	return e.fetchImageWithCookie(key, "")
+}
+
+// fetchImageWithCookie reads a stored image while presenting, or omitting, a session cookie.
+func (e *topicEnv) fetchImageWithCookie(key, cookie string) response {
+	e.t.Helper()
+	request := httptest.NewRequest("GET", "/media/"+key, nil)
+	if cookie != "" {
+		request.Header.Set("Cookie", cookie)
+	}
 	recorder := httptest.NewRecorder()
-	e.handler.ServeHTTP(recorder, httptest.NewRequest("GET", "/media/"+key, nil))
+	e.handler.ServeHTTP(recorder, request)
 	return response{status: recorder.Code, body: recorder.Body.Bytes()}
+}
+
+// decodeImage proves the served bytes are a real image and returns it for comparison.
+func decodeImage(t *testing.T, data []byte) image.Image {
+	t.Helper()
+	decoded, _, err := image.Decode(bytes.NewReader(data))
+	if err != nil {
+		t.Fatalf("served bytes are not a decodable image: %v", err)
+	}
+	return decoded
 }
 
 func (e *topicEnv) attachmentRow(id uint64) (status string, deleteAfter sql.NullTime, key string) {
@@ -74,6 +96,22 @@ func (e *topicEnv) attachmentRow(id uint64) (status string, deleteAfter sql.Null
 		e.t.Fatal(err)
 	}
 	return status, deleteAfter, key
+}
+
+// uploadPNG uploads a PNG through the API and returns its id and storage key.
+func (e *topicEnv) uploadPNG(width, height int, cookie, csrf string) (uint64, string) {
+	e.t.Helper()
+	res := e.upload(pngOf(e.t, width, height), "photo.png", cookie, csrf)
+	expectStatus(e.t, res, 201)
+	var body struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal(res.body, &body); err != nil {
+		e.t.Fatalf("cannot decode %s: %v", res.body, err)
+	}
+	id := parseUint(e.t, body.ID)
+	_, _, key := e.attachmentRow(id)
+	return id, key
 }
 
 func TestImageUploadAndServing(t *testing.T) {
@@ -100,12 +138,22 @@ func TestImageUploadAndServing(t *testing.T) {
 		if status != "pending" || !deleteAfter.Valid {
 			t.Fatalf("a fresh upload must be pending with a deadline: %s %v", status, deleteAfter)
 		}
-		if got := env.fetchImage(key); got.status != 200 {
-			t.Fatalf("a pending image must be readable during its window: %d", got.status)
+		// A pending image is unpublished, so only its author may read it during the pending window.
+		if got := env.fetchImageWithCookie(key, cookie); got.status != 200 {
+			t.Fatalf("the owner must be able to read their own pending image: %d", got.status)
 		}
-		// The served bytes must be the file that was stored, not a re-encode.
-		if !bytes.Equal(env.fetchImage(key).body, pngOf(t, 32, 24)) {
-			t.Fatal("served image differs from the uploaded bytes")
+		if got := env.fetchImage(key); got.status != 404 {
+			t.Fatalf("an anonymous reader must not reach a pending image: %d", got.status)
+		}
+		// The stored file is a re-encode, so the bytes are not the uploaded bytes by design; what has to
+		// survive is the picture itself.
+		served := env.fetchImageWithCookie(key, cookie)
+		decoded := decodeImage(t, served.body)
+		if decoded.Bounds().Dx() != 32 || decoded.Bounds().Dy() != 24 {
+			t.Fatalf("served image changed dimensions: %v", decoded.Bounds())
+		}
+		if !samePixels(t, decoded, decodeImage(t, pngOf(t, 32, 24))) {
+			t.Fatal("served image does not show the uploaded picture")
 		}
 	})
 
@@ -130,7 +178,7 @@ func TestImageUploadAndServing(t *testing.T) {
 			t.Fatalf("attaching must promote the image: status=%s delete_after=%v", status, deleteAfter)
 		}
 		if got := env.fetchImage(key); got.status != 200 {
-			t.Fatalf("an attached image must be readable: %d", got.status)
+			t.Fatalf("an attached image must be readable by an anonymous reader: %d", got.status)
 		}
 		// Deleting the content must hide its images at once, without waiting for the cleanup job.
 		var topicID string
@@ -177,6 +225,225 @@ func TestImageUploadAndServing(t *testing.T) {
 			}
 		}
 	})
+}
+
+// TestImagePrivacyBoundaries covers who may read a stored image. Every case is a permission boundary, so
+// each one asserts the exact status rather than merely "not 200".
+func TestImagePrivacyBoundaries(t *testing.T) {
+	env := newTopicEnv(t)
+	authorCookie, authorCSRF := env.sessionCookie(env.authorID)
+	// A second real account proves that "signed in" is not the same thing as "the owner".
+	otherCookie, _ := env.sessionCookie(env.newUser("second"))
+
+	t.Run("待用图片只有作者能读，游客与其他登录用户都是404", func(t *testing.T) {
+		_, key := env.uploadPNG(8, 8, authorCookie, authorCSRF)
+		if got := env.fetchImageWithCookie(key, authorCookie); got.status != 200 {
+			t.Fatalf("the owner must read their own pending image: %d", got.status)
+		}
+		if got := env.fetchImage(key); got.status != 404 {
+			t.Fatalf("an anonymous reader must get 404 for a pending image: %d", got.status)
+		}
+		if got := env.fetchImageWithCookie(key, otherCookie); got.status != 404 {
+			t.Fatalf("another signed-in user must get 404 for a pending image: %d", got.status)
+		}
+	})
+
+	t.Run("过期的待用图片连作者也不能读", func(t *testing.T) {
+		id, key := env.uploadPNG(8, 8, authorCookie, authorCSRF)
+		if _, err := env.db.Exec(`UPDATE attachments SET delete_after=DATE_SUB(UTC_TIMESTAMP(6),INTERVAL 1 HOUR) WHERE id=?`, id); err != nil {
+			t.Fatal(err)
+		}
+		if got := env.fetchImageWithCookie(key, authorCookie); got.status != 404 {
+			t.Fatalf("an expired pending image must be unreadable even for its owner: %d", got.status)
+		}
+		if got := env.fetchImage(key); got.status != 404 {
+			t.Fatalf("an expired pending image must be unreadable for a guest: %d", got.status)
+		}
+	})
+
+	t.Run("匿名图片在内容可见时对游客开放", func(t *testing.T) {
+		uploaded := env.upload(pngOf(t, 12, 12), "public.png", authorCookie, authorCSRF)
+		expectStatus(t, uploaded, 201)
+		var item struct {
+			ID string `json:"id"`
+		}
+		if err := json.Unmarshal(uploaded.body, &item); err != nil {
+			t.Fatal(err)
+		}
+		topic := env.do("POST", "/api/v1/topics",
+			`{"board_id":"`+itoa(env.boardID)+`","title":"公开图片","body_md":"正文。","is_anonymous":false,"tag_ids":[],"attachment_ids":["`+item.ID+`"]}`,
+			authorCookie, authorCSRF)
+		expectStatus(t, topic, 201)
+		_, _, key := env.attachmentRow(parseUint(t, item.ID))
+		if got := env.fetchImage(key); got.status != 200 {
+			t.Fatalf("an image of visible content must stay public: %d", got.status)
+		}
+	})
+
+	t.Run("隐藏根主题后，回答与评论里的图片同时失效", func(t *testing.T) {
+		// The moderation interface is not implemented, so this states the legal target state directly:
+		// hiding a topic must hide everything shown inside it, including images carried by answers and
+		// comments whose own rows stay 'visible'.
+		question := env.do("POST", "/api/v1/topics",
+			`{"board_id":"`+itoa(env.qaBoardID)+`","title":"隐藏祖先","body_md":"正文。","is_anonymous":false,"tag_ids":[]}`,
+			authorCookie, authorCSRF)
+		expectStatus(t, question, 201)
+		var root struct {
+			ID string `json:"id"`
+		}
+		if err := json.Unmarshal(question.body, &root); err != nil {
+			t.Fatal(err)
+		}
+
+		answerUpload := env.upload(pngOf(t, 8, 8), "answer.png", authorCookie, authorCSRF)
+		expectStatus(t, answerUpload, 201)
+		var answerImage struct {
+			ID string `json:"id"`
+		}
+		if err := json.Unmarshal(answerUpload.body, &answerImage); err != nil {
+			t.Fatal(err)
+		}
+		answer := env.do("POST", "/api/v1/answers",
+			`{"topic_id":"`+root.ID+`","body_md":"回答。","is_anonymous":false,"attachment_ids":["`+answerImage.ID+`"]}`,
+			authorCookie, authorCSRF)
+		expectStatus(t, answer, 201)
+		var answerBody struct {
+			ID string `json:"id"`
+		}
+		if err := json.Unmarshal(answer.body, &answerBody); err != nil {
+			t.Fatal(err)
+		}
+
+		commentUpload := env.upload(pngOf(t, 8, 8), "comment.png", authorCookie, authorCSRF)
+		expectStatus(t, commentUpload, 201)
+		var commentImage struct {
+			ID string `json:"id"`
+		}
+		if err := json.Unmarshal(commentUpload.body, &commentImage); err != nil {
+			t.Fatal(err)
+		}
+		comment := env.do("POST", "/api/v1/comments",
+			`{"topic_id":"`+root.ID+`","body_md":"评论。","is_anonymous":false,"attachment_ids":["`+commentImage.ID+`"]}`,
+			authorCookie, authorCSRF)
+		expectStatus(t, comment, 201)
+
+		_, _, answerKey := env.attachmentRow(parseUint(t, answerImage.ID))
+		_, _, commentKey := env.attachmentRow(parseUint(t, commentImage.ID))
+		for name, key := range map[string]string{"回答": answerKey, "评论": commentKey} {
+			if got := env.fetchImage(key); got.status != 200 {
+				t.Fatalf("a visible question must serve its %s image: %d", name, got.status)
+			}
+		}
+
+		if _, err := env.db.Exec(`UPDATE contents SET moderation_status='hidden' WHERE id=?`, root.ID); err != nil {
+			t.Fatal(err)
+		}
+		// The ancestor rule matters: the answer and comment rows themselves are still 'visible', so only
+		// the root check can refuse these two.
+		for name, key := range map[string]string{"回答": answerKey, "评论": commentKey} {
+			if got := env.fetchImage(key); got.status != 404 {
+				t.Fatalf("hiding the question must hide its %s image from a guest: %d", name, got.status)
+			}
+			if got := env.fetchImageWithCookie(key, otherCookie); got.status != 404 {
+				t.Fatalf("hiding the question must hide its %s image from another user: %d", name, got.status)
+			}
+		}
+	})
+
+	t.Run("删除根主题后回答图片立即失效", func(t *testing.T) {
+		question := env.do("POST", "/api/v1/topics",
+			`{"board_id":"`+itoa(env.qaBoardID)+`","title":"删除祖先","body_md":"正文。","is_anonymous":false,"tag_ids":[]}`,
+			authorCookie, authorCSRF)
+		expectStatus(t, question, 201)
+		var root struct {
+			ID string `json:"id"`
+		}
+		if err := json.Unmarshal(question.body, &root); err != nil {
+			t.Fatal(err)
+		}
+		answerUpload := env.upload(pngOf(t, 8, 8), "answer.png", authorCookie, authorCSRF)
+		expectStatus(t, answerUpload, 201)
+		var item struct {
+			ID string `json:"id"`
+		}
+		if err := json.Unmarshal(answerUpload.body, &item); err != nil {
+			t.Fatal(err)
+		}
+		answer := env.do("POST", "/api/v1/answers",
+			`{"topic_id":"`+root.ID+`","body_md":"回答。","is_anonymous":false,"attachment_ids":["`+item.ID+`"]}`,
+			authorCookie, authorCSRF)
+		expectStatus(t, answer, 201)
+		_, _, key := env.attachmentRow(parseUint(t, item.ID))
+		del := env.do("DELETE", "/api/v1/contents/"+root.ID, "", authorCookie, authorCSRF)
+		expectStatus(t, del, 200)
+		if got := env.fetchImage(key); got.status != 404 {
+			t.Fatalf("deleting the question must hide its answer image immediately: %d", got.status)
+		}
+	})
+
+	t.Run("同一图片被多个内容引用时，任一可见即保持可读", func(t *testing.T) {
+		// The rule is "at least one fully visible reference", not "every referencing row is visible", so a
+		// hidden duplicate reference must not deny the public one.
+		uploaded := env.upload(pngOf(t, 8, 8), "shared.png", authorCookie, authorCSRF)
+		expectStatus(t, uploaded, 201)
+		var item struct {
+			ID string `json:"id"`
+		}
+		if err := json.Unmarshal(uploaded.body, &item); err != nil {
+			t.Fatal(err)
+		}
+		first := env.do("POST", "/api/v1/topics",
+			`{"board_id":"`+itoa(env.boardID)+`","title":"引用一","body_md":"正文。","is_anonymous":false,"tag_ids":[],"attachment_ids":["`+item.ID+`"]}`,
+			authorCookie, authorCSRF)
+		expectStatus(t, first, 201)
+		var firstBody struct {
+			ID string `json:"id"`
+		}
+		if err := json.Unmarshal(first.body, &firstBody); err != nil {
+			t.Fatal(err)
+		}
+		second := env.do("POST", "/api/v1/topics",
+			`{"board_id":"`+itoa(env.boardID)+`","title":"引用二","body_md":"正文。","is_anonymous":false,"tag_ids":[],"attachment_ids":["`+item.ID+`"]}`,
+			authorCookie, authorCSRF)
+		expectStatus(t, second, 201)
+		var secondBody struct {
+			ID string `json:"id"`
+		}
+		if err := json.Unmarshal(second.body, &secondBody); err != nil {
+			t.Fatal(err)
+		}
+		_, _, key := env.attachmentRow(parseUint(t, item.ID))
+		if _, err := env.db.Exec(`UPDATE contents SET moderation_status='hidden' WHERE id=?`, firstBody.ID); err != nil {
+			t.Fatal(err)
+		}
+		if got := env.fetchImage(key); got.status != 200 {
+			t.Fatalf("one hidden reference must not hide an image another visible content still shows: %d", got.status)
+		}
+		if _, err := env.db.Exec(`UPDATE contents SET moderation_status='hidden' WHERE id=?`, secondBody.ID); err != nil {
+			t.Fatal(err)
+		}
+		if got := env.fetchImage(key); got.status != 404 {
+			t.Fatalf("an image no visible content references must stop being served: %d", got.status)
+		}
+	})
+}
+
+func samePixels(t *testing.T, left, right image.Image) bool {
+	t.Helper()
+	if left.Bounds() != right.Bounds() {
+		return false
+	}
+	bounds := left.Bounds()
+	for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
+		for x := bounds.Min.X; x < bounds.Max.X; x++ {
+			lr, lg, lb, la := left.At(x, y).RGBA()
+			rr, rg, rb, ra := right.At(x, y).RGBA()
+			if lr != rr || lg != rg || lb != rb || la != ra {
+				return false
+			}
+		}
+	}
+	return true
 }
 
 func parseUint(t *testing.T, raw string) uint64 {

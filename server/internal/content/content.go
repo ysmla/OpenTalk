@@ -49,8 +49,9 @@ func Register(mux *http.ServeMux, deps Deps) {
 		mux.Handle("POST /api/v1/attachments", auth.Require(deps.Sessions, false, http.HandlerFunc(deps.uploadImage)))
 	}
 	if deps.Media != nil {
-		// Public: images are embedded in public content. The key grants nothing on its own, because the
-		// handler asks the database whether the image may still be shown.
+		// Public: images are embedded in public content, so the route is readable without a session. The
+		// key grants nothing on its own: the handler asks the database whether this image may be shown to
+		// this viewer, and the session is resolved optionally to admit the owner of a pending upload.
 		mux.HandleFunc("GET /media/{key}", deps.getImage)
 	}
 }

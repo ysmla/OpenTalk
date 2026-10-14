@@ -108,6 +108,15 @@ func (e *topicEnv) createUser(nickname string) uint64 {
 	return uint64(id)
 }
 
+// newUser creates an extra participant whose email is unique per environment. A fixed nickname cannot be
+// reused within one schema because email_normalized is unique, and two tests in the same environment may
+// both want "another account".
+func (e *topicEnv) newUser(nickname string) uint64 {
+	e.t.Helper()
+	e.seq++
+	return e.createUser(fmt.Sprintf("%s%d", nickname, e.seq))
+}
+
 func (e *topicEnv) createTag(name string) uint64 {
 	e.t.Helper()
 	result, err := e.db.Exec(`INSERT INTO tags (name,normalized_name,description) VALUES (?,?,?)`, name, name, name+"说明")
