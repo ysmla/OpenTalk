@@ -163,6 +163,10 @@ func (d Deps) failCreate(w http.ResponseWriter, r *http.Request, err error) bool
 		httpapi.Fail(w, r, 409, "NOT_A_QUESTION", "该主题是讨论帖，不能回答")
 	case errors.Is(err, ErrCommentTarget), errors.Is(err, ErrReplyTarget):
 		httpapi.Fail(w, r, 422, "INVALID_COMMENT_TARGET", "评论或回复目标无效")
+	case errors.Is(err, ErrNotTopicOwner):
+		httpapi.Fail(w, r, 403, "NOT_TOPIC_OWNER", "只有提问者可以切换解决状态")
+	case errors.Is(err, ErrResolutionStatus):
+		httpapi.Fail(w, r, 422, "INVALID_REQUEST", "解决状态只能是 open 或 solved")
 	default:
 		return false
 	}
