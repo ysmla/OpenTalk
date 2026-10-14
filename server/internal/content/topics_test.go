@@ -16,6 +16,7 @@ import (
 	"testing"
 
 	"opentalk/server/internal/auth"
+	"opentalk/server/internal/media"
 	"opentalk/server/internal/platform/httpapi"
 	"opentalk/server/internal/platform/secretbox"
 	"opentalk/server/internal/platform/testdb"
@@ -76,6 +77,7 @@ func newTopicEnv(t *testing.T) *topicEnv {
 		Logger:   slog.New(slog.NewJSONHandler(io.Discard, nil)),
 		Sessions: env.sessions,
 		Settings: &settings.Store{DB: db, Key: settingsKey},
+		Media:    &media.Store{Root: t.TempDir()},
 	})
 	env.handler = httpapi.Middleware(testOrigin, slog.New(slog.NewJSONHandler(io.Discard, nil)), mux)
 	return env

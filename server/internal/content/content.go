@@ -14,6 +14,7 @@ import (
 	"strings"
 
 	"opentalk/server/internal/auth"
+	"opentalk/server/internal/media"
 	"opentalk/server/internal/platform/httpapi"
 	"opentalk/server/internal/settings"
 )
@@ -30,6 +31,8 @@ type Deps struct {
 	Sessions auth.SessionStore
 	// Settings supplies the administrator-configured per-content image limit.
 	Settings *settings.Store
+	// Media stores uploaded images. When it is absent the upload and image routes are not mounted.
+	Media *media.Store
 }
 
 // Register mounts the public content reads and the authenticated writes. Writes go through
@@ -43,6 +46,12 @@ func Register(mux *http.ServeMux, deps Deps) {
 		mux.Handle("PATCH /api/v1/questions/{topic_id}/resolution", auth.Require(deps.Sessions, false, http.HandlerFunc(deps.setResolution)))
 		mux.Handle("PATCH /api/v1/contents/{content_id}", auth.Require(deps.Sessions, false, http.HandlerFunc(deps.editContent)))
 		mux.Handle("DELETE /api/v1/contents/{content_id}", auth.Require(deps.Sessions, false, http.HandlerFunc(deps.deleteContent)))
+		mux.Handle("POST /api/v1/attachments", auth.Require(deps.Sessions, false, http.HandlerFunc(deps.uploadImage)))
+	}
+	if deps.Media != nil {
+		// Public: images are embedded in public content. The key grants nothing on its own, because the
+		// handler asks the database whether the image may still be shown.
+		mux.HandleFunc("GET /media/{key}", deps.getImage)
 	}
 }
 

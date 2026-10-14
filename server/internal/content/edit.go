@@ -130,6 +130,9 @@ func (s Store) EditContent(ctx context.Context, in EditContentInput) error {
 				return err
 			}
 		}
+		if err := promoteAttachments(ctx, tx, in.Attachments); err != nil {
+			return err
+		}
 	}
 	return tx.Commit()
 }

@@ -133,6 +133,9 @@ func (s Store) CreateTopic(ctx context.Context, in NewTopic) (uint64, error) {
 			return 0, fmt.Errorf("cannot attach image: %w", err)
 		}
 	}
+	if err := promoteAttachments(ctx, tx, in.AttachmentIDs); err != nil {
+		return 0, err
+	}
 	// "inherit" is the stored default, so only an explicit override needs a row.
 	if in.EmailOverride != "" && in.EmailOverride != "inherit" {
 		if _, err := tx.ExecContext(ctx,

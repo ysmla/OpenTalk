@@ -125,6 +125,9 @@ func (s Store) CreateComment(ctx context.Context, in NewComment) (uint64, error)
 			return 0, err
 		}
 	}
+	if err := promoteAttachments(ctx, tx, in.AttachmentIDs); err != nil {
+		return 0, err
+	}
 	if _, err := tx.ExecContext(ctx, `UPDATE topics SET last_activity_at=UTC_TIMESTAMP(6) WHERE content_id=?`,
 		in.TopicID); err != nil {
 		return 0, err

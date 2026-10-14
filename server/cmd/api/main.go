@@ -15,6 +15,7 @@ import (
 	"opentalk/server/internal/auth"
 	"opentalk/server/internal/content"
 	"opentalk/server/internal/health"
+	"opentalk/server/internal/media"
 	"opentalk/server/internal/platform/config"
 	"opentalk/server/internal/platform/database"
 	"opentalk/server/internal/platform/httpapi"
@@ -91,6 +92,7 @@ func run() error {
 		Logger:   logger,
 		Sessions: sessions,
 		Settings: settingsStore,
+		Media:    &media.Store{Root: cfg.MediaRoot},
 	})
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) { httpapi.Fail(w, r, 404, "NOT_FOUND", "接口不存在") })
 	server := &http.Server{Addr: cfg.HTTPAddr, Handler: httpapi.Middleware(cfg.AppOrigin, logger, mux), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 15 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 1 << 20}

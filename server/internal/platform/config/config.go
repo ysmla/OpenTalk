@@ -23,6 +23,9 @@ type Config struct {
 	// TrustProxy makes the per-IP limits read X-Forwarded-For. It must stay false unless a reverse
 	// proxy that overwrites the header sits in front, because a direct client can forge it.
 	TrustProxy bool
+	// MediaRoot is the directory uploaded images are written to. It must be a location the process can
+	// write and that is excluded from version control.
+	MediaRoot string
 }
 
 // CookieSecure reports whether session cookies must carry the Secure attribute. It follows the
@@ -33,7 +36,10 @@ func (c Config) CookieSecure() bool {
 }
 
 func Load() (Config, error) {
-	c := Config{HTTPAddr: os.Getenv("HTTP_ADDR"), AppOrigin: os.Getenv("APP_ORIGIN"), MySQLDSN: os.Getenv("MYSQL_DSN"), RedisAddr: os.Getenv("REDIS_ADDR"), RedisPassword: os.Getenv("REDIS_PASSWORD")}
+	c := Config{HTTPAddr: os.Getenv("HTTP_ADDR"), AppOrigin: os.Getenv("APP_ORIGIN"), MySQLDSN: os.Getenv("MYSQL_DSN"), RedisAddr: os.Getenv("REDIS_ADDR"), RedisPassword: os.Getenv("REDIS_PASSWORD"), MediaRoot: os.Getenv("MEDIA_ROOT")}
+	if c.MediaRoot == "" {
+		c.MediaRoot = "data/media"
+	}
 	if c.HTTPAddr == "" {
 		c.HTTPAddr = "127.0.0.1:8080"
 	}
