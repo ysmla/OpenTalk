@@ -1,0 +1,11 @@
+.env
+.env.*
+!.env.example
+node_modules/
+dist/
+bin/
+.cache/
+__pycache__/
+*.log
+coverage.out
+data/
