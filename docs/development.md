@@ -107,6 +107,37 @@ go test -count=1 -v ./internal/auth  # 账号闭环：注册、登录、会话�
 
 两套测试都只创建并删除自己随机命名的测试库，不会改动已有schema。`./internal/auth` 还会连接Redis的**第15号数据库并先清空它**，所以不要把它指向生产实例或正在使用的库；它另外在127.0.0.1上临时监听一个SMTP接收器，不会真的发信。
 
+## 图片与删除内容的清理（手动执行，需外部调度）
+
+清理**不是**API进程内的定时器，而是一个手动命令：
+
+```powershell
+cd D:\code\OpenTalk\server
+go run ./cmd/admin -action cleanup
+# 或先构建：go build -o ..\bin\cleanup.exe .\cmd\admin ; ..\bin\cleanup.exe -action cleanup
+```
+
+输出形如 `待用附件清除 0、孤儿附件清除 0、归档原文清理 0`。需要 `MYSQL_DSN`、`APP_SECRET`（用于解密站点设置里的清理窗口）与 `MEDIA_ROOT`（默认 `data/media`）。
+
+**为什么不做成内置定时器**：清理是低频运维动作。放进API进程会让多实例部署时每个实例各跑一遍，进程重启也会打乱节奏；而把它做成可重复执行的命令，正好配合下面这条"失败可重试"的设计。代价是必须自己挂调度。
+
+调度方式（任选其一）：
+
+```powershell
+# Windows 计划任务：每天 04:00 执行一次
+schtasks /Create /TN OpenTalkCleanup /SC DAILY /ST 04:00 ^
+  /TR "powershell -NoProfile -Command \"& { cd D:\code\OpenTalk\server; .\..\bin\cleanup.exe -action cleanup }\""
+```
+
+```cron
+# Linux crontab：每天 04:00
+0 4 * * * cd /srv/opentalk/server && MYSQL_DSN=... APP_SECRET=... MEDIA_ROOT=/srv/opentalk/data/media ./cleanup -action cleanup >> /var/log/opentalk-cleanup.log 2>&1
+```
+
+**失败可重试**：每个阶段先把候选行标成 `pending_delete` 并提交，再删文件，只有文件确实删除后才置为 `deleted`。进程中断或 `unlink` 失败都会让该行停在 `pending_delete`，下次运行会重新处理；文件本就不存在按成功处理。**失败不会被提前标记为完成**，因此重复执行是安全的。
+
+**孤儿附件不会在7天时就被删**：只要还有未到期的删除归档引用该内容，图片就会保留到归档到期之后（30天）。归档存在的意义就是让管理员复核原始材料，提前删图会让复核落空。
+
 ## 本次验收记录（2026-10-14）
 
 Docker Desktop恢复正常（Engine 29.6.1、Compose v5.1.4），`docker compose up -d --wait` 启动的MySQL 8.4与Redis 8.2均healthy。以下检查已在真实数据库上执行并通过：
@@ -120,6 +151,9 @@ Docker Desktop恢复正常（Engine 29.6.1、Compose v5.1.4），`docker compose
 | 真实发信 | 用管理员配置的阿里云邮件推送触发一次注册验证码 | SMTP事务成功、API返回202（约450ms），阿里云接受该邮件；密码从未出现在命令文本、日志或数据库明文中 |
 | 板块读取 | `go test -count=1 -v ./internal/content` | PASS：空列表序列化为`[]`；游标绑定排序条件、跨接口游标被拒(400)；越界limit被拒(422)；归档板块仍可见 |
 | Markdown写入校验 | `go test -count=1 -v ./internal/markdown` | PASS：围栏/缩进/行内代码里的`<script>`允许，正文里的原始HTML、注释、iframe拒绝；`javascript:`/`data:`/`vbscript:`/`file:`以及`java\tscript:`绕过写法全部拒绝；并有一组断言钉住解析器实际会把哪些目标变成链接 |
+| 清理任务 | `go test -count=1 -v ./internal/content -run TestCleanup`，以及真实执行 `go run ./cmd/admin -action cleanup` | PASS：过期待用附件被清除且未过期的保留、**已关联图片即使被强制改成过期待用也不清除**、删除内容后孤儿附件须等窗口且**归档未到期时保留**、到期归档正文置空标题置NULL、**文件已缺失的待删除行按完成处理**、重复运行不再重复计数。开发库上真实执行两次均为全0且未改动任何数据 |
+| 图片上传与读取 | `go test -count=1 -v ./internal/content -run TestImageUpload` | PASS：上传PNG写入pending行并可经 `/media/{key}` 读回**且字节与上传完全一致**、关联到内容后提升为active并清空delete_after、**删除内容后图片立即404**、非图片422、超像素422、未登录401、缺CSRF403、未知与穿越型key均404 |
+| 删除级联 | `go test -count=1 -v ./internal/content -run TestDelete` | PASS：帖子连带全部评论、问题连带全部回答与评论、回答只连带其评论、**删除评论递归只删回复而不动祖先与无关分支**、原文与原标题写入归档且`purge_after`恰好为删除时间+30天、活跃标题被替换、已删除内容立即可读性与互动均失效、非作者与管理员403、重复删除404、禁言仍可删自己的内容 |
 | 内容编辑 | `go test -count=1 -v ./internal/content` | PASS：作者编辑正文并写入`edited_at`；非作者与**管理员**均403 NOT_CONTENT_OWNER；31分钟被拒409而29分钟仍可编辑（边界两侧都测）；**编辑不延长时限**；锁定主题409 TOPIC_LOCKED；**已解决不禁止编辑**；禁言403；已删除404；标题仅主题可改（回答422）；附件省略不改、空数组清空、他人附件拒绝；接口层401/CSRF_REJECTED、回答返回answer形状、主题返回discussion形状、危险正文422、未知字段400 |
 | 解决状态切换 | `go test -count=1 -v ./internal/content` | PASS：提问者标记已解决并写入`resolved_at`；**切换后新增回答/主题评论/回答评论三者均被拒**，重新打开后恢复且`resolved_at`被清空；重复设置同一状态幂等；非提问者与**管理员**均返回403 NOT_TOPIC_OWNER且状态不变；讨论帖409、已删除404、非法取值422；**锁定后仍可重新打开**（solved不是单向门）；接口层401/CSRF_REJECTED/200返回整个QuestionTopic/未知字段400/无身份泄漏 |
 | 评论与回复 | `go test -count=1 -v ./internal/content` | PASS：主题评论两个线程字段均为空且响应中省略、回答评论带answer_id、回复顶层评论时parent与reply_to相同、回复回复时parent保持线程根而reply_to为实际对象、**跨目标回复双向均422**、回复目标跨主题拒绝、回答跨主题拒绝、已解决问题禁止主题评论与回答评论、活跃时间被推进；匿名楼主评论强制匿名沿用编号、其他参与者为`匿名#1`；接口层401/CSRF_REJECTED/201契约形状/INVALID_COMMENT_TARGET/坏回复ID |

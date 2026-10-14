@@ -4146,7 +4146,7 @@
       "post": {
         "operationId": "uploadImage",
         "summary": "上传图片",
-        "description": "校验真实格式、大小和像素数，移除元数据；未关联图片只允许本人访问。图片上限在实现阶段定稿。",
+        "description": "校验真实格式、大小和像素数。元数据（EXIF）剥离尚未实现，当前按原样存储——这会泄露匿名作者的GPS与设备信息，属于待办而非已实现。图片上限在实现阶段定稿。",
         "tags": [
           "attachments"
         ],
