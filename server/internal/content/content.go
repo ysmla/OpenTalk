@@ -1,0 +1,207 @@
+// Package content serves the discussion and Q&A surface. It starts with the read-only board list;
+// topic, answer and comment writes land here as the content loop is implemented.
+package content
+
+import (
+	"context"
+	"database/sql"
+	"encoding/base64"
+	"errors"
+	"fmt"
+	"log/slog"
+	"net/http"
+	"strconv"
+	"strings"
+
+	"opentalk/server/internal/platform/httpapi"
+)
+
+// Store reads and writes content rows.
+type Store struct{ DB *sql.DB }
+
+// Deps carries what the content endpoints need.
+type Deps struct {
+	Store  Store
+	Logger *slog.Logger
+}
+
+// Register mounts the public content reads. Writes are added route by route as the loop is built.
+func Register(mux *http.ServeMux, deps Deps) {
+	mux.HandleFunc("GET /api/v1/boards", deps.listBoards)
+}
+
+// failDependency answers 503 and keeps the internal cause in the server log only.
+func (d Deps) failDependency(w http.ResponseWriter, r *http.Request, err error) {
+	if d.Logger != nil {
+		d.Logger.Error("dependency failure", "request_id", httpapi.RequestID(r.Context()), "error", err.Error())
+	}
+	httpapi.Fail(w, r, 503, "DEPENDENCY_UNAVAILABLE", "服务暂不可用")
+}
+
+var (
+	ErrInvalidCursor = errors.New("invalid cursor")
+	ErrInvalidLimit  = errors.New("invalid limit")
+)
+
+// Paging bounds are the contract's: default 20, maximum 100.
+const (
+	defaultLimit = 20
+	maxLimit     = 100
+)
+
+// pageRequest is the validated pagination input. After is the ordering key of the last row of the
+// previous page; it is empty on the first page.
+type pageRequest struct {
+	Limit int
+	After []int64
+}
+
+// parsePage validates limit and cursor. The cursor carries the name of the list it was issued for, so
+// a cursor from one endpoint cannot be replayed against a differently ordered list — the contract
+// requires the cursor to be bound to the filter and sort conditions rather than being an offset in
+// disguise.
+func parsePage(r *http.Request, scope string) (pageRequest, error) {
+	page := pageRequest{Limit: defaultLimit}
+	if raw := r.URL.Query().Get("limit"); raw != "" {
+		value, err := strconv.Atoi(raw)
+		if err != nil || value < 1 || value > maxLimit {
+			return page, ErrInvalidLimit
+		}
+		page.Limit = value
+	}
+	raw := r.URL.Query().Get("cursor")
+	if raw == "" {
+		return page, nil
+	}
+	key, err := decodeCursor(scope, raw)
+	if err != nil {
+		return page, err
+	}
+	page.After = key
+	return page, nil
+}
+
+// encodeCursor builds an opaque cursor from the ordering key of the last returned row. The scope is
+// part of the payload so decoding can reject a cursor issued for another list.
+func encodeCursor(scope string, key ...int64) string {
+	parts := make([]string, 0, len(key)+1)
+	parts = append(parts, scope)
+	for _, value := range key {
+		parts = append(parts, strconv.FormatInt(value, 10))
+	}
+	return base64.RawURLEncoding.EncodeToString([]byte(strings.Join(parts, "|")))
+}
+
+func decodeCursor(scope, cursor string) ([]int64, error) {
+	decoded, err := base64.RawURLEncoding.DecodeString(cursor)
+	if err != nil {
+		return nil, ErrInvalidCursor
+	}
+	parts := strings.Split(string(decoded), "|")
+	if len(parts) < 2 || parts[0] != scope {
+		return nil, ErrInvalidCursor
+	}
+	key := make([]int64, 0, len(parts)-1)
+	for _, part := range parts[1:] {
+		value, err := strconv.ParseInt(part, 10, 64)
+		if err != nil || value < 0 {
+			return nil, ErrInvalidCursor
+		}
+		key = append(key, value)
+	}
+	return key, nil
+}
+
+// scanRows turns a query into a slice, closing the rows and surfacing both iteration and close
+// errors so a truncated read is never mistaken for a short list.
+func scanRows[T any](rows *sql.Rows, scan func(*sql.Rows) (T, error)) ([]T, error) {
+	defer rows.Close()
+	items := make([]T, 0)
+	for rows.Next() {
+		item, err := scan(rows)
+		if err != nil {
+			return nil, err
+		}
+		items = append(items, item)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+// boardCursorScope binds board cursors to the board ordering.
+const boardCursorScope = "boards"
+
+// Board is the stored board row. Archived boards stay visible; the flag only stops new topics.
+type Board struct {
+	ID          uint64
+	Name        string
+	Description string
+	Kind        string
+	SortOrder   int
+	IsArchived  bool
+}
+
+// ListBoards returns boards ordered by (sort_order, id). It reads one row beyond the limit to decide
+// has_more without a second query, so a full page never lies about having a next page.
+func (s Store) ListBoards(ctx context.Context, page pageRequest) ([]Board, bool, error) {
+	query := `SELECT id,name,description,kind,sort_order,is_archived FROM boards`
+	args := make([]any, 0, 3)
+	if len(page.After) == 2 {
+		query += ` WHERE (sort_order,id) > (?,?)`
+		args = append(args, page.After[0], page.After[1])
+	}
+	query += ` ORDER BY sort_order,id LIMIT ?`
+	args = append(args, page.Limit+1)
+
+	rows, err := s.DB.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, false, err
+	}
+	boards, err := scanRows(rows, func(rows *sql.Rows) (Board, error) {
+		var b Board
+		err := rows.Scan(&b.ID, &b.Name, &b.Description, &b.Kind, &b.SortOrder, &b.IsArchived)
+		return b, err
+	})
+	if err != nil {
+		return nil, false, err
+	}
+	hasMore := len(boards) > page.Limit
+	if hasMore {
+		boards = boards[:page.Limit]
+	}
+	return boards, hasMore, nil
+}
+
+// SeedBoards inserts the two first-version boards when the installation has none. It is idempotent:
+// running it on a populated instance reports the count and changes nothing, so it cannot duplicate
+// boards that an administrator deliberately renamed or removed.
+func (s Store) SeedBoards(ctx context.Context) (int, error) {
+	var existing int
+	if err := s.DB.QueryRowContext(ctx, `SELECT COUNT(*) FROM boards`).Scan(&existing); err != nil {
+		return 0, err
+	}
+	if existing > 0 {
+		return existing, nil
+	}
+	tx, err := s.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, err
+	}
+	defer func() { _ = tx.Rollback() }()
+	for _, board := range []Board{
+		{Name: "综合讨论", Description: "一般话题、闲聊与公告。", Kind: "discussion", SortOrder: 10},
+		{Name: "问答", Description: "提问与回答，问题可由提问者标记为已解决。", Kind: "qa", SortOrder: 20},
+	} {
+		if _, err := tx.ExecContext(ctx,
+			`INSERT INTO boards (name,description,kind,sort_order) VALUES (?,?,?,?)`,
+			board.Name, board.Description, board.Kind, board.SortOrder); err != nil {
+			return 0, fmt.Errorf("cannot seed board %q: %w", board.Name, err)
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return 0, err
+	}
+	return 0, nil
+}
