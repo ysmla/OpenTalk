@@ -87,7 +87,7 @@ operation('patch','/questions/{topic_id}/resolution','setResolution','切换问�
 operation('get','/questions/{topic_id}/answers','listAnswers','读取问题回答','ContentPage',auth='public',params=pagination)
 operation('post','/answers','createAnswer','发布回答','Answer','CreateAnswerRequest',status='201',description='根问题必须open。匿名提问者自答强制匿名并显示楼主。',implemented=True)
 operation('get','/topics/{topic_id}/comments','listComments','读取主题或回答评论','ContentPage',auth='public',params=pagination+[query('answer_id',{'type':'string'},'省略时读取主题评论'),query('parent_comment_id',{'type':'string'},'省略读取顶层；填写读取该串回复')])
-operation('post','/comments','createComment','发布评论或回复','Comment','CreateCommentRequest',status='201',description='匿名楼主强制匿名并显示楼主；解决、锁定、隐藏、删除状态均须检查根主题及目标祖先。')
+operation('post','/comments','createComment','发布评论或回复','Comment','CreateCommentRequest',status='201',description='匿名楼主强制匿名并显示楼主；解决、锁定、隐藏、删除状态均须检查根主题及目标祖先。',implemented=True)
 operation('get','/search','searchContents','搜索公开内容','ContentPage',auth='public',params=pagination+[query('q',{'type':'string','minLength':1}),query('board_id',{'type':'string'}),query('tag_id',{'type':'string'})],description='只检索可见原文，不能检索审核归档；中文搜索策略仍需语料验证。q必须填写。')
 spec['paths']['/api/v1/search']['get']['parameters'][-3]['required']=True
 op=operation('post','/attachments','uploadImage','上传图片','Attachment',status='201',description='校验真实格式、大小和像素数，移除元数据；未关联图片只允许本人访问。图片上限在实现阶段定稿。')
@@ -122,5 +122,5 @@ operation('get','/admin/settings','getAdminSettings','读取站点设置','Admin
 operation('patch','/admin/settings','updateAdminSettings','修改站点设置','AdminSettings','AdminUpdateSettingsRequest',auth='admin',description='只提交需要改动的字段，至少一项。修改后对后续请求立即生效；写入审计，但不记录密码和字段值。',implemented=True)
 
 output=ROOT/'docs/api/openapi.json'
-output.write_text(json.dumps(spec,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
+output.write_text(json.dumps(spec,ensure_ascii=False,indent=2)+'\n',encoding='utf-8',newline='\n')
 print(f'Generated {len(schemas)} models and {sum(len(v) for v in spec["paths"].values())} operations: {output}')

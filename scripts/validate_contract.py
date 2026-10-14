@@ -31,7 +31,7 @@ ALLOWED_IMPLEMENTED={
     '/api/v1/auth/captcha','/api/v1/auth/captcha/{challenge_id}/image','/api/v1/auth/email-codes',
     '/api/v1/auth/register','/api/v1/auth/login','/api/v1/auth/logout','/api/v1/auth/reset-password',
     '/api/v1/auth/csrf','/api/v1/me','/api/v1/admin/settings','/api/v1/boards','/api/v1/topics',
-    '/api/v1/answers',
+    '/api/v1/answers','/api/v1/comments',
 }
 assert {'/health','/ready'} <= implemented, sorted(implemented)
 undocumented=implemented-({'/health','/ready'}|ALLOWED_IMPLEMENTED)

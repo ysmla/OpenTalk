@@ -120,6 +120,7 @@ Docker Desktop恢复正常（Engine 29.6.1、Compose v5.1.4），`docker compose
 | 真实发信 | 用管理员配置的阿里云邮件推送触发一次注册验证码 | SMTP事务成功、API返回202（约450ms），阿里云接受该邮件；密码从未出现在命令文本、日志或数据库明文中 |
 | 板块读取 | `go test -count=1 -v ./internal/content` | PASS：空列表序列化为`[]`；游标绑定排序条件、跨接口游标被拒(400)；越界limit被拒(422)；归档板块仍可见 |
 | Markdown写入校验 | `go test -count=1 -v ./internal/markdown` | PASS：围栏/缩进/行内代码里的`<script>`允许，正文里的原始HTML、注释、iframe拒绝；`javascript:`/`data:`/`vbscript:`/`file:`以及`java\tscript:`绕过写法全部拒绝；并有一组断言钉住解析器实际会把哪些目标变成链接 |
+| 评论与回复 | `go test -count=1 -v ./internal/content` | PASS：主题评论两个线程字段均为空且响应中省略、回答评论带answer_id、回复顶层评论时parent与reply_to相同、回复回复时parent保持线程根而reply_to为实际对象、**跨目标回复双向均422**、回复目标跨主题拒绝、回答跨主题拒绝、已解决问题禁止主题评论与回答评论、活跃时间被推进；匿名楼主评论强制匿名沿用编号、其他参与者为`匿名#1`；接口层401/CSRF_REJECTED/201契约形状/INVALID_COMMENT_TARGET/坏回复ID |
 | 回答 | `go test -count=1 -v ./internal/content` | PASS：讨论帖拒绝回答(NOT_A_QUESTION)、锁定与已解决均为409（**提问者与管理员同样被拒**，重新打开后恢复）、已删除按404、answers行的question_id即主题ID、活跃时间被推进、禁言拒绝；匿名规则：匿名楼主自答传false仍按匿名存且显示楼主并沿用编号1、其他参与者为`匿名#1`且同人多次发言编号稳定、不同参与者递增、编号不跨讨论复用、非匿名主题作者带楼主标识；接口层401/CSRF_REJECTED/201契约形状与匿名不泄漏 |
 | 发帖与提问 | `go test -count=1 -v ./internal/content` | PASS：真实MySQL上验证一个事务内的contents/topics/questions/匿名映射与回填、非匿名帖不建映射、讨论板块不建问题行、归档板块拒绝(409)、未知板块(404)、标签不存在与超限、重复ID去重、图片非本人/已作废拒绝、张数超上限、禁言拒绝且过期禁言放行、邮件覆盖只在显式设置时建行；接口层验证未登录401、缺CSRF与越权令牌均为CSRF_REJECTED、跨站Origin拒绝、原始HTML与危险链接422、超长标题422、未知字段400、问答返回question与open |
 | Go全量测试 | `go test ./...` | 全部ok（account、auth、captcha、content、health、mailer、markdown、migrations、settings、secretbox） |

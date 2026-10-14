@@ -9,7 +9,7 @@
 
 ## 状态与约定
 
-已实现：`GET /health`、`GET /ready`；账号闭环的 `/auth/captcha`、`/auth/captcha/{challenge_id}/image`、`/auth/email-codes`、`/auth/register`、`/auth/login`、`/auth/logout`、`/auth/reset-password`、`/auth/csrf`、`/me`（GET与PATCH）、`/admin/settings`（GET与PATCH）；内容闭环的 `/boards`（GET）、`/topics`（POST）与 `/answers`（POST）。其余操作均为planned，未实现路由返回404，不返回虚假成功数据。`x-implementation-status`是唯一状态来源，`validate_contract.py`会拒绝未列入其白名单就标成implemented的操作，避免文档先于代码宣称能力。
+已实现：`GET /health`、`GET /ready`；账号闭环的 `/auth/captcha`、`/auth/captcha/{challenge_id}/image`、`/auth/email-codes`、`/auth/register`、`/auth/login`、`/auth/logout`、`/auth/reset-password`、`/auth/csrf`、`/me`（GET与PATCH）、`/admin/settings`（GET与PATCH）；内容闭环的 `/boards`（GET）、`/topics`（POST）、`/answers`（POST）与 `/comments`（POST）。其余操作均为planned，未实现路由返回404，不返回虚假成功数据。`x-implementation-status`是唯一状态来源，`validate_contract.py`会拒绝未列入其白名单就标成implemented的操作，避免文档先于代码宣称能力。
 
 - 路径前缀 `/api/v1`，受控图片为 `/media/{key}`，健康检查不带前缀。
 - Cookie会话：opentalk_session、HttpOnly、SameSite=Lax，生产环境Secure。所有写请求要求精确Origin，登录后的写请求另需X-CSRF-Token。
