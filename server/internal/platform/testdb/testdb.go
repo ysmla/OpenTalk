@@ -3,7 +3,9 @@
 package testdb
 
 import (
+	"crypto/rand"
 	"database/sql"
+	"encoding/hex"
 	"fmt"
 	"os"
 	"time"
@@ -21,6 +23,19 @@ import (
 // machine without MySQL.
 func DSNFromEnv() string { return os.Getenv("OPENTALK_TEST_MYSQL_DSN") }
 
+// randomSuffix makes each schema name unique. A timestamp is not enough: on Windows the system clock
+// advances in ~15 ms steps, so two packages whose tests start in the same tick would derive the same
+// name, and the second CREATE DATABASE would fail. That produced an intermittent failure that only
+// appeared under `go test ./...`, where packages run in parallel.
+func randomSuffix() string {
+	var buffer [8]byte
+	if _, err := rand.Read(buffer[:]); err != nil {
+		// Falling back to the clock keeps the helper usable, even if it is no longer collision-proof.
+		return fmt.Sprintf("%d", time.Now().UnixNano())
+	}
+	return hex.EncodeToString(buffer[:])
+}
+
 // Open creates a randomly named database, applies every embedded migration to it, and returns the
 // handle plus a cleanup function that drops the database again. The DSN must allow CREATE DATABASE;
 // an existing schema is never touched.
@@ -35,7 +50,7 @@ func Open(dsn string) (*sql.DB, func(), error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	name := fmt.Sprintf("opentalk_test_%d", time.Now().UnixNano())
+	name := fmt.Sprintf("opentalk_test_%d_%s", os.Getpid(), randomSuffix())
 	if _, err := admin.Exec("CREATE DATABASE " + name + " CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci"); err != nil {
 		_ = admin.Close()
 		return nil, nil, fmt.Errorf("cannot create the test database: %w", err)

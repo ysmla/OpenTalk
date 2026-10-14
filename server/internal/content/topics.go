@@ -115,7 +115,7 @@ func (s Store) CreateTopic(ctx context.Context, in NewTopic) (uint64, error) {
 		}
 	}
 	if in.IsAnonymous {
-		identityID, err := allocateAnonymousIdentity(ctx, tx, topicID, in.AuthorID)
+		identityID, _, err := ensureAnonymousIdentity(ctx, tx, topicID, in.AuthorID)
 		if err != nil {
 			return 0, err
 		}
@@ -159,29 +159,6 @@ func refuseMuted(ctx context.Context, tx *sql.Tx, userID uint64) error {
 		return ErrAccountMuted
 	}
 	return nil
-}
-
-// allocateAnonymousIdentity takes the next stable number for this discussion. The unique key on
-// (topic_id, display_number) is the real guard, so two concurrent allocations can never share a
-// number; computing MAX+1 inside the same transaction keeps the numbering dense.
-func allocateAnonymousIdentity(ctx context.Context, tx *sql.Tx, topicID, userID uint64) (uint64, error) {
-	var next int64
-	if err := tx.QueryRowContext(ctx,
-		`SELECT COALESCE(MAX(display_number),0)+1 FROM anonymous_identities WHERE topic_id=?`,
-		topicID).Scan(&next); err != nil {
-		return 0, err
-	}
-	result, err := tx.ExecContext(ctx,
-		`INSERT INTO anonymous_identities (topic_id,user_id,display_number) VALUES (?,?,?)`,
-		topicID, userID, next)
-	if err != nil {
-		return 0, fmt.Errorf("cannot allocate anonymous identity: %w", err)
-	}
-	id, err := result.LastInsertId()
-	if err != nil {
-		return 0, err
-	}
-	return uint64(id), nil
 }
 
 func requireAllTags(ctx context.Context, tx *sql.Tx, ids []uint64) error {

@@ -153,6 +153,16 @@ func (d Deps) failCreate(w http.ResponseWriter, r *http.Request, err error) bool
 		httpapi.Fail(w, r, 422, "TOO_MANY_ATTACHMENTS", "关联的图片数量超出上限")
 	case errors.Is(err, ErrEmailOverride):
 		httpapi.Fail(w, r, 422, "INVALID_REQUEST", "邮件设置取值无效")
+	case errors.Is(err, ErrTopicNotFound):
+		httpapi.Fail(w, r, 404, "TOPIC_NOT_FOUND", "主题不存在或不可见")
+	case errors.Is(err, ErrTopicLocked):
+		httpapi.Fail(w, r, 409, "TOPIC_LOCKED", "主题已被锁定，无法新增内容")
+	case errors.Is(err, ErrTopicSolved):
+		httpapi.Fail(w, r, 409, "TOPIC_SOLVED", "问题已标记解决，暂不能新增回答或评论")
+	case errors.Is(err, ErrNotAQuestion):
+		httpapi.Fail(w, r, 409, "NOT_A_QUESTION", "该主题是讨论帖，不能回答")
+	case errors.Is(err, ErrCommentTarget), errors.Is(err, ErrReplyTarget):
+		httpapi.Fail(w, r, 422, "INVALID_COMMENT_TARGET", "评论或回复目标无效")
 	default:
 		return false
 	}
@@ -276,25 +286,9 @@ func toTopicResponse(view TopicView) topicResponse {
 	if view.EditedAt.Valid {
 		response.EditedAt = formatTime(view.EditedAt.Time)
 	}
-	if view.IsAnonymous {
-		response.Author = authorResponse{
-			Mode:          "anonymous",
-			DisplayName:   "楼主",
-			DisplayNumber: view.AnonymousNumber,
-			IsTopicOwner:  true,
-		}
-	} else {
-		response.Author = authorResponse{
-			Mode: "named",
-			User: &publicUserResponse{
-				PublicID:  view.AuthorPublicID,
-				Nickname:  view.AuthorNickname,
-				AvatarURL: optionalMediaURL(view.AuthorAvatarKey),
-				CreatedAt: formatTime(view.AuthorCreatedAt),
-			},
-			IsTopicOwner: true,
-		}
-	}
+	// In this response the author is by definition the topic owner, so the marker is always shown.
+	response.Author = renderAuthor(view.IsAnonymous, true, view.AnonymousNumber,
+		view.AuthorPublicID, view.AuthorNickname, view.AuthorAvatarKey, view.AuthorCreatedAt)
 	for _, tag := range view.Tags {
 		response.Tags = append(response.Tags, tagResponse{
 			ID:          strconv.FormatUint(tag.ID, 10),
