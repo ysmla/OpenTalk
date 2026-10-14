@@ -90,9 +90,9 @@ operation('get','/topics/{topic_id}/comments','listComments','读取主题或回
 operation('post','/comments','createComment','发布评论或回复','Comment','CreateCommentRequest',status='201',description='匿名楼主强制匿名并显示楼主；解决、锁定、隐藏、删除状态均须检查根主题及目标祖先。',implemented=True)
 operation('get','/search','searchContents','搜索公开内容','ContentPage',auth='public',params=pagination+[query('q',{'type':'string','minLength':1}),query('board_id',{'type':'string'}),query('tag_id',{'type':'string'})],description='只检索可见原文，不能检索审核归档；中文搜索策略仍需语料验证。q必须填写。')
 spec['paths']['/api/v1/search']['get']['parameters'][-3]['required']=True
-op=operation('post','/attachments','uploadImage','上传图片','Attachment',status='201',description='校验真实格式、大小和像素数，移除元数据；未关联图片只允许本人访问。图片上限在实现阶段定稿。')
+op=operation('post','/attachments','uploadImage','上传图片','Attachment',status='201',description='校验真实格式、大小和像素数，移除元数据；未关联图片只允许本人访问。图片上限在实现阶段定稿。',implemented=True)
 op['requestBody']={'required':True,'content':{'multipart/form-data':{'schema':{'type':'object','additionalProperties':False,'required':['file'],'properties':{'file':{'type':'string','format':'binary'}}}}}}
-op=operation('get','/media/{key}','getImage','读取受控图片',auth='public',description='检查可见关联或上传者权限，匿名地址不含身份；不直接暴露磁盘目录。')
+op=operation('get','/media/{key}','getImage','读取受控图片',auth='public',description='检查可见关联或上传者权限，匿名地址不含身份；不直接暴露磁盘目录。',implemented=True)
 op['responses']['200']['content']={'image/*':{'schema':{'type':'string','format':'binary'}}}
 operation('get','/me/notification-preferences','getNotificationPreferences','读取邮件偏好','NotificationPreferences')
 operation('put','/me/notification-preferences','setNotificationPreferences','设置邮件偏好','NotificationPreferences','NotificationPreferences')

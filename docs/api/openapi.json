@@ -4268,7 +4268,7 @@
             }
           }
         },
-        "x-implementation-status": "planned",
+        "x-implementation-status": "implemented",
         "requestBody": {
           "required": true,
           "content": {
@@ -4413,7 +4413,7 @@
             }
           }
         },
-        "x-implementation-status": "planned",
+        "x-implementation-status": "implemented",
         "parameters": [
           {
             "name": "key",
