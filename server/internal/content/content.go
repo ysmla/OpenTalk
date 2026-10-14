@@ -39,6 +39,7 @@ func Register(mux *http.ServeMux, deps Deps) {
 	if deps.Sessions != nil {
 		mux.Handle("POST /api/v1/topics", auth.Require(deps.Sessions, false, http.HandlerFunc(deps.createTopic)))
 		mux.Handle("POST /api/v1/answers", auth.Require(deps.Sessions, false, http.HandlerFunc(deps.createAnswer)))
+		mux.Handle("POST /api/v1/comments", auth.Require(deps.Sessions, false, http.HandlerFunc(deps.createComment)))
 	}
 }
 
