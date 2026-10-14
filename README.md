@@ -1,0 +1,2 @@
+# OpenTalk
+A simple forum.
