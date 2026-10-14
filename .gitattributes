@@ -1,0 +1,16 @@
+# Pin line endings so a checkout is byte-identical on every machine.
+#
+# The index stores LF, but without this file Git converts to CRLF on checkout when core.autocrlf is
+# true (the Windows default), and gofmt then reports every Go file as unformatted. Verification that
+# depends on formatted output must not depend on a developer's Git configuration.
+* text=auto eol=lf
+
+# Binary formats must never be line-ending normalised.
+*.exe binary
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.webp binary
+*.gif binary
+*.ico binary
+*.pdf binary
