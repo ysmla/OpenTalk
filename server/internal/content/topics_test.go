@@ -37,6 +37,7 @@ type topicEnv struct {
 	tagID     uint64
 	authorID  uint64
 	seq       int
+	mediaRoot string
 }
 
 func newTopicEnv(t *testing.T) *topicEnv {
@@ -72,12 +73,13 @@ func newTopicEnv(t *testing.T) *topicEnv {
 	env.tagID = env.createTag("公告")
 
 	mux := http.NewServeMux()
+	env.mediaRoot = t.TempDir()
 	Register(mux, Deps{
 		Store:    store,
 		Logger:   slog.New(slog.NewJSONHandler(io.Discard, nil)),
 		Sessions: env.sessions,
 		Settings: &settings.Store{DB: db, Key: settingsKey},
-		Media:    &media.Store{Root: t.TempDir()},
+		Media:    &media.Store{Root: env.mediaRoot},
 	})
 	env.handler = httpapi.Middleware(testOrigin, slog.New(slog.NewJSONHandler(io.Discard, nil)), mux)
 	return env

@@ -19,6 +19,7 @@ import (
 	"opentalk/server/internal/account"
 	"opentalk/server/internal/auth"
 	"opentalk/server/internal/content"
+	"opentalk/server/internal/media"
 	"opentalk/server/internal/platform/config"
 	"opentalk/server/internal/platform/database"
 	"opentalk/server/internal/platform/secretbox"
@@ -33,7 +34,7 @@ func main() {
 }
 
 func run() error {
-	action := flag.String("action", "", "create-admin、promote、set-smtp、clear-smtp、seed-boards 或 show")
+	action := flag.String("action", "", "create-admin、promote、set-smtp、clear-smtp、seed-boards、cleanup 或 show")
 	email := flag.String("email", "", "目标账号邮箱")
 	nickname := flag.String("nickname", "", "create-admin 使用的昵称")
 	host := flag.String("host", "", "SMTP 主机")
@@ -83,6 +84,8 @@ func run() error {
 		return clearSMTP(ctx, db, users, cfg, *reason, *actorEmail)
 	case "seed-boards":
 		return seedBoards(ctx, db)
+	case "cleanup":
+		return runCleanup(ctx, db, cfg)
 	case "show":
 		return show(ctx, db, cfg)
 	default:
@@ -198,6 +201,35 @@ func setSMTP(ctx context.Context, db *sql.DB, users auth.Store, cfg config.Confi
 		fmt.Println("提示：未指定 -actor-email，本次变更没有写入审计记录。")
 	}
 	printSettings(updated)
+	return nil
+}
+
+// runCleanup removes abandoned images and expires archived original text. It is designed to be scheduled:
+// running it twice in a row is safe, and a row whose file could not be removed stays in a retryable state
+// instead of being recorded as finished.
+func runCleanup(ctx context.Context, db *sql.DB, cfg config.Config) error {
+	key, err := secretbox.Derive(cfg.AppSecret, "settings-secret")
+	if err != nil {
+		return err
+	}
+	current, err := settings.Store{DB: db, Key: key}.Load(ctx)
+	if err != nil {
+		return err
+	}
+	ctx, cancel := context.WithTimeout(ctx, content.CleanupTimeout)
+	defer cancel()
+	report, err := content.Store{DB: db}.Cleanup(ctx, content.CleanupOptions{
+		PendingTTLHours:   current.MediaPendingTTLHours,
+		OrphanCleanupDays: current.MediaOrphanCleanupDays,
+		Media:             &media.Store{Root: cfg.MediaRoot},
+	})
+	if err != nil {
+		return err
+	}
+	fmt.Println(report.String())
+	for _, failure := range report.Failures {
+		fmt.Println("  " + failure)
+	}
 	return nil
 }
 
