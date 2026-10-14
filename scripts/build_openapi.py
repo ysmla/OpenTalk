@@ -78,7 +78,7 @@ operation('get','/users/{public_id}/contents','listUserContents','读取用户�
 operation('get','/boards','listBoards','读取板块','BoardPage',auth='public',params=pagination,implemented=True)
 operation('get','/tags','listTags','搜索标签','TagPage',auth='public',params=pagination+[query('q',{'type':'string'})])
 operation('get','/topics','listTopics','读取帖子和问题','ContentPage',auth='public',params=pagination+[query('board_id',{'type':'string'}),query('tag_id',{'type':'string'}),query('resolution_status',{'type':'string','enum':['open','solved']}),query('sort',{'type':'string','enum':['newest','active'],'default':'newest'})])
-operation('post','/topics','createTopic','发布帖子或问题','PublicContent','CreateTopicRequest',status='201')
+operation('post','/topics','createTopic','发布帖子或问题','PublicContent','CreateTopicRequest',status='201',implemented=True)
 operation('get','/contents/{content_id}','getContent','读取内容或删除占位','PublicContent',auth='public',description='检查全部祖先可见性；隐藏内容统一404；删除内容返回不含原文的占位。')
 operation('get','/contents/{content_id}/permissions','getContentPermissions','读取当前会话内容权限','ContentPermissions',description='私有响应，不做公共缓存。最终写入仍需重新鉴权。')
 operation('patch','/contents/{content_id}','editContent','编辑自己的内容','PublicContent','EditContentRequest')
