@@ -81,7 +81,7 @@ operation('get','/topics','listTopics','读取帖子和问题','ContentPage',aut
 operation('post','/topics','createTopic','发布帖子或问题','PublicContent','CreateTopicRequest',status='201',implemented=True)
 operation('get','/contents/{content_id}','getContent','读取内容或删除占位','PublicContent',auth='public',description='检查全部祖先可见性；隐藏内容统一404；删除内容返回不含原文的占位。')
 operation('get','/contents/{content_id}/permissions','getContentPermissions','读取当前会话内容权限','ContentPermissions',description='私有响应，不做公共缓存。最终写入仍需重新鉴权。')
-operation('patch','/contents/{content_id}','editContent','编辑自己的内容','PublicContent','EditContentRequest')
+operation('patch','/contents/{content_id}','editContent','编辑自己的内容','PublicContent','EditContentRequest',implemented=True)
 operation('delete','/contents/{content_id}','deleteContent','连带软删除内容','DeletionResult',description='作者删除自己内容或管理员删除。问题删除全部回答与评论；帖子/回答删除下属评论；评论沿真实回复树删除后代。原文30天审核保留，重复删除不延长期限。')
 operation('patch','/questions/{topic_id}/resolution','setResolution','切换问题解决状态','QuestionTopic','SetResolutionRequest',description='仅提问者。solved禁止所有新增回答、评论和回复，与新增和删除使用同一根主题锁。',implemented=True)
 operation('get','/questions/{topic_id}/answers','listAnswers','读取问题回答','ContentPage',auth='public',params=pagination)

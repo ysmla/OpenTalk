@@ -32,6 +32,7 @@ ALLOWED_IMPLEMENTED={
     '/api/v1/auth/register','/api/v1/auth/login','/api/v1/auth/logout','/api/v1/auth/reset-password',
     '/api/v1/auth/csrf','/api/v1/me','/api/v1/admin/settings','/api/v1/boards','/api/v1/topics',
     '/api/v1/answers','/api/v1/comments','/api/v1/questions/{topic_id}/resolution',
+    '/api/v1/contents/{content_id}',
 }
 assert {'/health','/ready'} <= implemented, sorted(implemented)
 undocumented=implemented-({'/health','/ready'}|ALLOWED_IMPLEMENTED)
