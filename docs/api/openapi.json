@@ -3335,7 +3335,7 @@
             }
           }
         },
-        "x-implementation-status": "planned",
+        "x-implementation-status": "implemented",
         "parameters": [
           {
             "name": "topic_id",
