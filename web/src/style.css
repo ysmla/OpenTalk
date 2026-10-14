@@ -1,0 +1,35 @@
+:root { font-family: system-ui, sans-serif; color: #18302b; background: #f5f4ee; }
+body { margin: 0; }
+main { max-width: 760px; margin: 12vh auto; padding: 24px; }
+.eyebrow { font-size: 13px; letter-spacing: .2em; font-weight: 700; color: #3a6b5d; }
+h1 { font-size: clamp(30px, 5vw, 48px); line-height: 1.2; }
+p { line-height: 1.8; }
+section { margin-top: 48px; border-top: 1px solid #bfcac3; padding-top: 20px; }
+h2 { font-size: 20px; }
+button { background: #214f40; color: white; border: 0; border-radius: 6px; padding: 12px 20px; font: inherit; cursor: pointer; }
+button:focus-visible { outline: 3px solid #a57023; outline-offset: 3px; }
+button[disabled] { opacity: .55; cursor: not-allowed; }
+button.secondary { background: transparent; color: #214f40; border: 1px solid #214f40; }
+a { color: #214f40; }
+a:focus-visible { outline: 3px solid #a57023; outline-offset: 3px; }
+nav.links { display: flex; flex-wrap: wrap; gap: 18px; align-items: center; margin-top: 16px; }
+main.page { margin: 6vh auto; }
+main.page h1 { font-size: clamp(26px, 4vw, 34px); }
+form { display: grid; gap: 18px; max-width: 460px; margin-top: 24px; }
+.field { display: grid; gap: 6px; }
+.field label { font-size: 14px; font-weight: 600; }
+input, textarea { font: inherit; padding: 10px 12px; border: 1px solid #bfcac3; border-radius: 6px; background: #fff; color: inherit; }
+input:focus-visible, textarea:focus-visible { outline: 3px solid #a57023; outline-offset: 1px; }
+input:disabled, textarea:disabled { background: #ecebe4; color: #6b7a74; }
+textarea { min-height: 96px; resize: vertical; }
+.hint { margin: 0; font-size: 13px; line-height: 1.7; color: #566b63; }
+.alert { margin: 0; padding: 10px 12px; border: 1px solid #c2703a; border-radius: 6px; background: #fbeee3; color: #7a3c12; line-height: 1.7; }
+.status { margin: 0; padding: 10px 12px; border: 1px solid #7fa892; border-radius: 6px; background: #eaf3ee; color: #1d4536; line-height: 1.7; }
+.alert .detail, .status .detail { display: block; font-size: 13px; }
+.captcha { display: grid; gap: 12px; }
+.captcha-image { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+.captcha-image img { height: 48px; width: auto; border: 1px solid #bfcac3; border-radius: 6px; background: #fff; }
+.actions { display: flex; flex-wrap: wrap; gap: 14px; align-items: center; }
+dl.meta { display: grid; grid-template-columns: max-content 1fr; gap: 6px 16px; margin: 0 0 24px; }
+dl.meta dt { font-size: 14px; color: #566b63; }
+dl.meta dd { margin: 0; overflow-wrap: anywhere; }
