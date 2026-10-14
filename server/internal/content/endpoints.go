@@ -167,6 +167,16 @@ func (d Deps) failCreate(w http.ResponseWriter, r *http.Request, err error) bool
 		httpapi.Fail(w, r, 403, "NOT_TOPIC_OWNER", "只有提问者可以切换解决状态")
 	case errors.Is(err, ErrResolutionStatus):
 		httpapi.Fail(w, r, 422, "INVALID_REQUEST", "解决状态只能是 open 或 solved")
+	case errors.Is(err, ErrContentNotFound):
+		httpapi.Fail(w, r, 404, "CONTENT_NOT_FOUND", "内容不存在或不可见")
+	case errors.Is(err, ErrNotContentOwner):
+		httpapi.Fail(w, r, 403, "NOT_CONTENT_OWNER", "只能修改自己发布的内容")
+	case errors.Is(err, ErrEditWindowClosed):
+		httpapi.Fail(w, r, 409, "EDIT_WINDOW_CLOSED", "已超过 30 分钟编辑时限，只能删除后重发")
+	case errors.Is(err, ErrLockedEdit):
+		httpapi.Fail(w, r, 409, "TOPIC_LOCKED", "主题已被锁定，无法编辑正文")
+	case errors.Is(err, ErrTitleOnNonTopic):
+		httpapi.Fail(w, r, 422, "INVALID_REQUEST", "只有主题可以修改标题")
 	default:
 		return false
 	}
