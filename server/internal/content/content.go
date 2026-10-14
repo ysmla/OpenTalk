@@ -42,6 +42,7 @@ func Register(mux *http.ServeMux, deps Deps) {
 		mux.Handle("POST /api/v1/comments", auth.Require(deps.Sessions, false, http.HandlerFunc(deps.createComment)))
 		mux.Handle("PATCH /api/v1/questions/{topic_id}/resolution", auth.Require(deps.Sessions, false, http.HandlerFunc(deps.setResolution)))
 		mux.Handle("PATCH /api/v1/contents/{content_id}", auth.Require(deps.Sessions, false, http.HandlerFunc(deps.editContent)))
+		mux.Handle("DELETE /api/v1/contents/{content_id}", auth.Require(deps.Sessions, false, http.HandlerFunc(deps.deleteContent)))
 	}
 }
 
