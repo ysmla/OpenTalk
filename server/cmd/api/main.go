@@ -74,15 +74,24 @@ func run() error {
 		}
 		return nil
 	}, func(ctx context.Context) error { return cache.Ping(ctx).Err() })
+	// One sessions and one settings instance are shared by the account and content routes, so the two
+	// packages cannot drift apart on cookie policy or on the encryption key.
+	sessions := auth.Sessions{DB: db, CSRFKey: csrfKey, Secure: cfg.CookieSecure()}
+	settingsStore := &settings.Store{DB: db, Key: settingsKey}
 	auth.Register(mux, auth.Deps{
 		Store:      auth.Store{DB: db},
-		Sessions:   auth.Sessions{DB: db, CSRFKey: csrfKey, Secure: cfg.CookieSecure()},
+		Sessions:   sessions,
 		Challenges: auth.Challenges{Redis: cache, HashKey: challengeKey},
-		Settings:   &settings.Store{DB: db, Key: settingsKey},
+		Settings:   settingsStore,
 		Logger:     logger,
 		TrustProxy: cfg.TrustProxy,
 	})
-	content.Register(mux, content.Deps{Store: content.Store{DB: db}, Logger: logger})
+	content.Register(mux, content.Deps{
+		Store:    content.Store{DB: db},
+		Logger:   logger,
+		Sessions: sessions,
+		Settings: settingsStore,
+	})
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) { httpapi.Fail(w, r, 404, "NOT_FOUND", "接口不存在") })
 	server := &http.Server{Addr: cfg.HTTPAddr, Handler: httpapi.Middleware(cfg.AppOrigin, logger, mux), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 15 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 1 << 20}
 	listener, err := net.Listen("tcp", cfg.HTTPAddr)

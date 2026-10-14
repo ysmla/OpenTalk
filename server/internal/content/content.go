@@ -13,7 +13,9 @@ import (
 	"strconv"
 	"strings"
 
+	"opentalk/server/internal/auth"
 	"opentalk/server/internal/platform/httpapi"
+	"opentalk/server/internal/settings"
 )
 
 // Store reads and writes content rows.
@@ -23,11 +25,20 @@ type Store struct{ DB *sql.DB }
 type Deps struct {
 	Store  Store
 	Logger *slog.Logger
+	// Sessions resolves the signed-in account. The write routes are mounted only when it is present, so
+	// a misconfigured process cannot expose an unauthenticated write endpoint.
+	Sessions auth.SessionStore
+	// Settings supplies the administrator-configured per-content image limit.
+	Settings *settings.Store
 }
 
-// Register mounts the public content reads. Writes are added route by route as the loop is built.
+// Register mounts the public content reads and the authenticated writes. Writes go through
+// auth.Require, which performs the exact-Origin check and the session-bound CSRF token check.
 func Register(mux *http.ServeMux, deps Deps) {
 	mux.HandleFunc("GET /api/v1/boards", deps.listBoards)
+	if deps.Sessions != nil {
+		mux.Handle("POST /api/v1/topics", auth.Require(deps.Sessions, false, http.HandlerFunc(deps.createTopic)))
+	}
 }
 
 // failDependency answers 503 and keeps the internal cause in the server log only.
