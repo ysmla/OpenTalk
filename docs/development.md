@@ -152,7 +152,9 @@ Docker Desktop恢复正常（Engine 29.6.1、Compose v5.1.4），`docker compose
 | 板块读取 | `go test -count=1 -v ./internal/content` | PASS：空列表序列化为`[]`；游标绑定排序条件、跨接口游标被拒(400)；越界limit被拒(422)；归档板块仍可见 |
 | Markdown写入校验 | `go test -count=1 -v ./internal/markdown` | PASS：围栏/缩进/行内代码里的`<script>`允许，正文里的原始HTML、注释、iframe拒绝；`javascript:`/`data:`/`vbscript:`/`file:`以及`java\tscript:`绕过写法全部拒绝；并有一组断言钉住解析器实际会把哪些目标变成链接 |
 | 清理任务 | `go test -count=1 -v ./internal/content -run TestCleanup`，以及真实执行 `go run ./cmd/admin -action cleanup` | PASS：过期待用附件被清除且未过期的保留、**已关联图片即使被强制改成过期待用也不清除**、删除内容后孤儿附件须等窗口且**归档未到期时保留**、到期归档正文置空标题置NULL、**文件已缺失的待删除行按完成处理**、重复运行不再重复计数。开发库上真实执行两次均为全0且未改动任何数据 |
-| 图片上传与读取 | `go test -count=1 -v ./internal/content -run TestImageUpload` | PASS：上传PNG写入pending行并可经 `/media/{key}` 读回**且字节与上传完全一致**、关联到内容后提升为active并清空delete_after、**删除内容后图片立即404**、非图片422、超像素422、未登录401、缺CSRF403、未知与穿越型key均404 |
+| 图片上传与读取 | `go test -count=1 -v ./internal/content -run TestImageUpload` | PASS：上传PNG写入pending行、**图片经 `/media/{key}` 由作者读回且画面与上传一致**（存储的是重编码结果，不是原始字节）、关联到内容后提升为active并清空delete_after、**删除内容后图片立即404**、非图片422、超像素422、未登录401、缺CSRF403、未知与穿越型key均404 |
+| 图片隐私边界 | `go test -count=1 -v ./internal/content -run TestImagePrivacy` | PASS：待用图片只有作者200，**游客与其他登录用户都是404**；过期待用图片连作者也404；可见内容的图片对游客200；**隐藏根主题后回答与评论的图片同时404**（回答行自身的 moderation_status 仍是 visible，所以只有祖先判断能拦住它）；删除根主题后回答图片立即404；同一图片被多处引用时**任一可见引用即可读**，全部不可见后404 |
+| 图片元数据剥离 | `go test -count=1 -v ./internal/media` | PASS：JPEG的COM段、PNG的tEXt块、GIF的注释扩展块在存储文件中都不再出现；GIF的帧数/延迟/循环保留；**PNG与WebP像素完全一致、JPEG在容差内一致**；EXIF方向1/3/6与非法值9的处理正确（6会交换宽高）；尺寸上限在像素解码之前生效 |
 | 删除级联 | `go test -count=1 -v ./internal/content -run TestDelete` | PASS：帖子连带全部评论、问题连带全部回答与评论、回答只连带其评论、**删除评论递归只删回复而不动祖先与无关分支**、原文与原标题写入归档且`purge_after`恰好为删除时间+30天、活跃标题被替换、已删除内容立即可读性与互动均失效、非作者与管理员403、重复删除404、禁言仍可删自己的内容 |
 | 内容编辑 | `go test -count=1 -v ./internal/content` | PASS：作者编辑正文并写入`edited_at`；非作者与**管理员**均403 NOT_CONTENT_OWNER；31分钟被拒409而29分钟仍可编辑（边界两侧都测）；**编辑不延长时限**；锁定主题409 TOPIC_LOCKED；**已解决不禁止编辑**；禁言403；已删除404；标题仅主题可改（回答422）；附件省略不改、空数组清空、他人附件拒绝；接口层401/CSRF_REJECTED、回答返回answer形状、主题返回discussion形状、危险正文422、未知字段400 |
 | 解决状态切换 | `go test -count=1 -v ./internal/content` | PASS：提问者标记已解决并写入`resolved_at`；**切换后新增回答/主题评论/回答评论三者均被拒**，重新打开后恢复且`resolved_at`被清空；重复设置同一状态幂等；非提问者与**管理员**均返回403 NOT_TOPIC_OWNER且状态不变；讨论帖409、已删除404、非法取值422；**锁定后仍可重新打开**（solved不是单向门）；接口层401/CSRF_REJECTED/200返回整个QuestionTopic/未知字段400/无身份泄漏 |
@@ -194,6 +196,50 @@ Docker Desktop曾在本机创建/清理 `dockerInference` 运行时端点时退�
 
 接下来是**内容侧前端**：发帖页（Markdown 编辑与预览、图片上传）、内容渲染（markdown-it，必须禁用 HTML 并沿用服务端同一份链接白名单）、以及编辑、删除与解决状态的入口。到目前为止只有账号闭环与管理员设置页做过浏览器级验证，内容侧接口的真实浏览器验证要等这一步完成。
 
-仍待确认或未实现的事项集中在 `implementation-plan.md` 的「供外部评审」一节，其中优先级最高的是**图片 EXIF 元数据尚未剥离**——匿名用户上传的照片可能带有 GPS 坐标与设备信息，会绕过匿名保护。
+仍待确认或未实现的事项集中在 `implementation-plan.md` 的「供外部评审」一节。此前列为最高优先级的**图片 EXIF 元数据剥离已实现**（见下方「图片隐私修复」），不再是待办。
 
 真实发信的 SMTP 服务商参数**已确认并配置**（阿里云邮件推送 `smtpdm.aliyun.com:465`，隐式TLS），且已真实投递验证过；仍待确认的是**页面品牌风格**。密钥只放在 `.env`（已被版本控制忽略）或通过管道传入，不放进聊天或仓库。
+
+## 图片隐私修复（2026-10-14）
+
+[2026-10-14测试报告](test-report-2026-10-14.md) 复现了三项隐私缺陷，本次全部修复；三个 `reviewprobe` 探针已改成常规测试，`scripts/test-integration.ps1` 不再需要 `-PrivacyProbes`。
+
+| 缺陷 | 修复 | 现在的断言位置 |
+|---|---|---|
+| 未发布（pending）图片允许任何拿到链接的人读取 | `attachmentReadableFor` 对 pending 行同时要求"会话用户 == owner_id"且"未过期"；`GET /media/{key}` 每次请求解析可选会话（无会话/过期/伪造都按游客处理，不是错误），并补上 `Vary: Cookie` | `TestImagePrivacyBoundaries` 的前两个子测试 |
+| 隐藏根主题后，回答与评论里的图片仍可访问 | 可见性判断改为沿祖先链解析：先定位引用该图片的内容行，再由它的 topic/answer/comment 关系求出根主题，根主题的 `deleted_at` 与 `moderation_status` 必须同时可见 | `TestImagePrivacyBoundaries` 的后三个子测试 |
+| 上传图片原样落盘，EXIF/GPS 等元数据被保存 | `media.Save` 改为"解码 → 重新编码再落盘"。JPEG 用质量88重编码，PNG/WebP 用无附加块的编码器，GIF 用 `gif.DecodeAll`+`EncodeAll` 保留动画；EXIF 方向先应用到像素再丢弃，避免剥离元数据导致手机照片转向 | `TestUploadStripsImageMetadata`、`TestUploadAppliesExifOrientation` |
+
+附带修正的代码审查项：尺寸上限现在由 `image.DecodeConfig` 在像素解码**之前**判定（`TestSaveLimitsBeforeDecodingPixels`），像素上限因此也无法被解压炸弹绕过。
+
+新增依赖 `github.com/HugoSmits86/nativewebp`（纯 Go 的 WebP 无损编码器）：`golang.org/x/image` 只有解码器，不重编码就无法移除 WebP 容器里的元数据，而 CGo 版本的 libwebp 绑定会把 Go 工具链变成需要 C 编译器的构建。
+
+**取舍记录**：存储的字节不再是上传的字节，`ByteSize` 是重编码后的大小，因此校验按同一上限的1.25倍执行，超出按413拒绝。JPEG 会经历一次有损重编码（这是移除 EXIF 的代价，已在合同里写明）。动画 WebP 仍只保留首帧——`golang.org/x/image` 的 WebP 解码器本来就只解首帧，这与修复前一致，不是本次引入的退化。
+
+`scripts/smoke-local.ps1` 本次也修正为可在 Windows PowerShell 5.1（本机实际版本，没有 `pwsh`）上运行：密码改从开发容器读取而不是硬编码，`/ready` 现在断言真实的200，并增加"未知 media key 返回404"的检查。
+
+## 本次修复的验收（2026-10-14）
+
+```powershell
+# 仓库根目录
+.\scripts\test-integration.ps1     # 真实MySQL + 独立临时Redis
+.\scripts\smoke-local.ps1          # 真实API进程 + Vite代理 + /media 404
+cd server ; gofmt -l . ; go vet ./... ; go build ./...
+cd ..\web ; npm run build
+python scripts/build_openapi.py
+.\.cache\validation\Scripts\python.exe scripts/validate_apifox_models.py
+.\.cache\validation\Scripts\python.exe scripts/validate_contract.py
+```
+
+| 检查 | 结果 |
+|---|---|
+| Go 全量测试（真实 MySQL 与临时 Redis） | PASS：18个包、74个顶层测试、504个通过事件、0失败、0跳过 |
+| 全包语句覆盖率 | 67.0%（`-coverpkg=./...`；覆盖率不证明业务断言正确） |
+| gofmt / go vet / go build | 无输出 / 干净 / exit 0 |
+| React 生产构建 | exit 0（类型生成、tsc、vite build） |
+| 合同与SQL校验 | PASS：50个核心模型、57个操作、23张表3对迁移 |
+| 进程与代理烟雾检查 | PASS：`/health` 200、前端 200、Vite代理 200、`/ready` **200**、未实现路由 404、未知media key 404 |
+
+`/ready` 返回200说明MySQL、Redis可用且schema_migrations版本等于 `migrations.Latest`、dirty为false，本次已满足。此前该脚本硬编码了一个错误的数据库口令，因此只断言503；现在口令从开发容器读取，断言的是真实200。
+
+Docker Desktop曾在本机创建/清理 `dockerInference` 运行时端点时退出，导致真实库检查一度SKIP；该故障在2026-10-14已不再复现。若再次出现同一报错，参考[Docker排障文档](https://docs.docker.com/desktop/troubleshoot-and-support/troubleshoot/)继续诊断，或改用单独的本地MySQL与Redis验证。无论环境如何，都不以SQL解析检查冒充建表成功。
