@@ -63,7 +63,7 @@
 
 ## 供外部评审
 
-**已完成并验证**：账号闭环（验证码、注册、登录退出、找回密码、资料、管理员设置页）与内容闭环后端（板块、发帖提问、回答、评论回复、解决状态、编辑、删除级联、图片上传与受控读取、清理任务）。合同 `x-implementation-status=implemented` 的操作共 **21 个**，`validate_contract.py` 会拒绝未列入白名单就标成 implemented 的操作。
+**已完成并验证**：账号闭环（验证码、注册、登录退出、找回密码、资料、管理员设置页）与内容闭环后端（板块、发帖提问、回答、评论回复、解决状态、编辑、删除级联、图片上传与受控读取、清理任务）。合同 `x-implementation-status=implemented` 的操作为 **23 个（20 条路径）**；`validate_contract.py` 会拒绝未列入白名单就标成 implemented 的操作。核对方法：`docs/api/openapi.json` 里按 `方法+路径` 统计，而不是按路径——`/api/v1/contents/{content_id}` 同时承载 PATCH 与 DELETE，只数路径会少算。
 
 **怎么复现验证**（都需要真实 MySQL 与 Redis，见 development.md 的集成测试环境变量）：
 
