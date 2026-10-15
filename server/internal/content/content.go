@@ -50,6 +50,9 @@ func Register(mux *http.ServeMux, deps Deps) {
 	mux.HandleFunc("GET /api/v1/contents/{content_id}", deps.getContent)
 	mux.HandleFunc("GET /api/v1/contents/{content_id}/permissions", deps.getContentPermissions)
 	mux.HandleFunc("GET /api/v1/tags", deps.listTags)
+	// Search is public like every other read here, and it never widens visibility: it narrows candidates and
+	// then hands each one to the same reader the other endpoints use.
+	mux.HandleFunc("GET /api/v1/search", deps.searchContents)
 	if deps.Sessions != nil {
 		mux.Handle("POST /api/v1/topics", auth.Require(deps.Sessions, false, http.HandlerFunc(deps.createTopic)))
 		mux.Handle("POST /api/v1/answers", auth.Require(deps.Sessions, false, http.HandlerFunc(deps.createAnswer)))

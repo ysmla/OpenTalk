@@ -3971,7 +3971,7 @@
       "get": {
         "operationId": "searchContents",
         "summary": "搜索公开内容",
-        "description": "只检索可见原文，不能检索审核归档；中文搜索策略仍需语料验证。q必须填写。",
+        "description": "只检索可见原文，不能检索审核归档；q必填且不超过100字符，按内容id倒序（最新在前，没有相关度信号可排）。匹配是正文子串加标题子串，不是全文索引，中文检索策略仍需语料验证；board_id与tag_id限定\"内容所属的根主题\"，因此回答与评论也随其主题被筛入或筛出。隐藏、删除内容及其后代不会出现；匿名作者按与其它读取相同的匿名规则渲染。",
         "tags": [
           "search"
         ],
@@ -4088,7 +4088,7 @@
             }
           }
         },
-        "x-implementation-status": "planned",
+        "x-implementation-status": "implemented",
         "parameters": [
           {
             "name": "cursor",
