@@ -113,7 +113,9 @@ export function AdminModerationView({ sessionReady, signedIn, isAdmin, onUnauthe
   setNotice('');
   try {
    await setContentVisibility(disposeId.trim(), { visibility, reason: disposeReason.trim() });
-   setNotice(`内容 #${disposeId.trim()} 已${visibility === 'hidden' ? '隐藏' : '恢复'}。隐藏会连同其后代与附件一起停止公开访问。`);
+   setNotice(visibility === 'hidden'
+    ? `内容 #${disposeId.trim()} 已隐藏。隐藏会连同其后代与附件一起停止公开访问。`
+    : `内容 #${disposeId.trim()} 已恢复。恢复后重新受祖先状态与删除状态约束。`);
    setDisposeReason('');
    const entries = await listAudit();
    setAudit(entries.items);
