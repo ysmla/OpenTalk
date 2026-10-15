@@ -91,13 +91,14 @@ Redis 不可用时验证码和受保护发送操作失败关闭，不能绕过�
 
 - topics(board_id,is_pinned,last_activity_at,content_id) 支持板块列表；另设创建顺序查询。
 - contents(author_id,created_at,id) 支持私有内容列表；公开主页必须额外过滤匿名和可见性。
+- contents 的 `body_md` 与 topics 的 `title` 各有 ngram 全文索引（迁移 `000004_search_indexes`），供公开搜索使用；它们是唯一为检索而建的索引，其余索引都服务于列表与事务。
 - answers(question_id,content_id)、comments(topic_id,answer_id,parent_comment_id,content_id) 支持讨论读取。
 - comments(reply_to_comment_id,content_id) 支持评论后代遍历；两层展示不意味着真实回复关系只有两层。
 - questions(resolution_status,topic_id)、topic_tags(tag_id,topic_id) 支持筛选。
 - notifications(recipient_id,read_at,id)、reports(status,created_at,id) 支持通知和管理队列。
 - outbox_events(status,available_at,id)、email_deliveries(status,next_attempt_at,id) 支持任务领取。
 - deleted_content_archives(purge_after,content_id) 支持分批清理。
-- 中文检索需验证 MySQL 的分词方案与实际语料；第一版不引入独立搜索服务。检索不得包含删除审核表，结果仍需检查可见性。
+- 中文检索已落地：`contents.body_md` 与 `topics.title` 各有一个 ngram 全文索引（迁移 `000004_search_indexes`），查询用 `MATCH … AGAINST(… IN BOOLEAN MODE)` 的短语形式；短于一个 ngram 词（默认 2 字）的查询回退到 `LIKE` 扫描，因为索引对它产生不出 token。**仍需验证的是检索质量**（分词、同义词、词序）与实际语料，不是索引方案；不引入独立搜索服务。检索不得包含删除审核表，结果仍需检查可见性（实现上先由 SQL 缩小候选，再走共享的祖先可见性规则，最后逐条复用与其它读取相同的读取器）。
 
 ## 实现前需定稿
 

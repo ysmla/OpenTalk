@@ -55,4 +55,20 @@ for name,expected in MIGRATIONS:
     assert 'ON DELETE CASCADE' not in up, name
     assert all(target in tables or target in known for target in re.findall(r'REFERENCES (\w+)',up)), f'{name} references an unknown table'
     known|=set(tables)
+# The API README states how many operations are implemented, and that number is what a reader trusts. Checking
+# it here turns "the docs agree with the contract" from a promise into a gate: a doc that understates the
+# surface is the same defect as a wrong status field, and it is the failure mode that actually happened
+# (docs/api/README.md still described only the content write side after ~20 more operations shipped).
+readme=(ROOT/'docs/api/README.md').read_text(encoding='utf-8')
+match=re.search(r'已实现（\*\*(\d+) 个操作\*\*', readme)
+assert match, 'docs/api/README.md no longer states an implemented-operation count'
+# Count operations, not paths: `implemented` above is a set of paths, and one path can carry several
+# implemented methods (GET+PUT on the same route, for instance), so the two numbers legitimately differ.
+implemented_ops=sum(1 for methods in spec['paths'].values() for method, operation in methods.items()
+                    if method in ('get','post','patch','put','delete')
+                    and operation.get('x-implementation-status')=='implemented')
+assert int(match.group(1))==implemented_ops, \
+    f'docs/api/README.md says {match.group(1)} implemented, the contract has {implemented_ops}'
+print(f'PASS: docs/api/README.md implemented count matches the contract ({implemented_ops} operations over {len(implemented)} paths).')
+
 print(f'PASS: OpenAPI ({len(operation_ids)} operations), auth contracts, {len(known)} tables across {len(MIGRATIONS)} up/down migrations. MySQL execution is a separate integration check.')

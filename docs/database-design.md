@@ -1,6 +1,6 @@
 # MySQL 物理设计与事务合同
 
-基线：MySQL 8.4 / InnoDB / utf8mb4。迁移为 `server/migrations/000001_initial.up.sql`（22张业务表）、`000002_account_settings.up.sql`（站点设置表）与 `000003_media_settings.up.sql`（图片限制列）；迁移工具另建 `schema_migrations`。三个迁移均已在本机真实MySQL 8.4上通过建表、约束与回滚往返验证（见开发文档的验收记录），但这不等于生产迁移已获准发布。
+基线：MySQL 8.4 / InnoDB / utf8mb4。迁移为 `server/migrations/000001_initial.up.sql`（22张业务表）、`000002_account_settings.up.sql`（站点设置表）、`000003_media_settings.up.sql`（图片限制列）与 `000004_search_indexes.up.sql`（`contents.body_md` 与 `topics.title` 的 ngram 全文索引，不含建表）；迁移工具另建 `schema_migrations`，当前 `migrations.Latest = 4`。四个迁移均已在本机真实MySQL 8.4上通过建表、约束与回滚往返验证（见开发文档的验收记录），但这不等于生产迁移已获准发布。全文索引一节的取舍见[搜索验证报告](verification-2026-10-15-search.md)：把两个 `MATCH` 写成 `OR` 时索引不被使用（实测与扫描相当），因此查询采用"两个索引子查询 `UNION` 后 join 回 `contents`"的形状。
 
 ## 存储与标识
 
