@@ -12,8 +12,9 @@ import {
 } from '../api/content';
 import type { CurrentUser } from '../api/auth';
 import { Alert, Status } from '../components/Alert';
-import { authorLabel, TagList, TopicStatus } from '../components/ContentMeta';
 import { AttachmentGallery } from '../components/AttachmentGallery';
+import { authorLabel, TagList, TopicStatus } from '../components/ContentMeta';
+import { ReportButton } from '../components/ReportButton';
 import { Markdown } from '../components/Markdown';
 import { AnswersSection } from './AnswersSection';
 import { CommentsSection } from './CommentsSection';
@@ -204,6 +205,13 @@ export function TopicDetailView({ topicId, user, sessionReady, onUnauthenticated
    {permissions?.can_delete && <button type="button" className="secondary" disabled={busy} onClick={() => void handleDelete()}>
     {busy ? '正在删除…' : '删除'}
    </button>}
+   {/* 举报对任何登录读者开放，与"我是不是作者"无关；未登录时按钮会先走登录流程。 */}
+   <ReportButton
+    contentId={topic.id}
+    sessionReady={sessionReady}
+    signedIn={user !== undefined}
+    onUnauthenticated={onUnauthenticated}
+   />
    {topic.kind === 'question' && permissions?.can_set_resolution && (topic.resolution_status === 'solved'
     ? <button type="button" className="secondary" disabled={busy} onClick={() => void handleResolution('open')}>重新打开问题</button>
     : <button type="button" disabled={busy} onClick={() => void handleResolution('solved')}>标记为已解决</button>)}

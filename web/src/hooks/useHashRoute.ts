@@ -11,6 +11,7 @@ export type RouteLocation =
  | { name: 'register' }
  | { name: 'reset' }
  | { name: 'me' }
+ | { name: 'me-reports' }
  | { name: 'admin' }
  | { name: 'topics' }
  | { name: 'board'; id: string }
@@ -23,13 +24,15 @@ export type RouteLocation =
 export type RouteName = RouteLocation['name'];
 
 /** The nine legacy names plus the topic list, all of which carry no argument. */
-export type Route = 'home' | 'login' | 'register' | 'reset' | 'me' | 'admin' | 'topics';
+export type Route = 'home' | 'login' | 'register' | 'reset' | 'me' | 'me-reports' | 'admin' | 'topics';
 
 const STATIC_ROUTES: Record<string, Route> = {
  login: 'login',
  register: 'register',
  reset: 'reset',
  me: 'me',
+ // The reader's own reports are a separate screen rather than a tab of the profile.
+ 'me/reports': 'me-reports',
  home: 'home',
  admin: 'admin',
  // Aliases for the home screen's topic list.
@@ -128,6 +131,8 @@ export function routeHref(location: RouteLocation): string {
  switch (location.name) {
   case 'home': return '#/';
   case 'topics': return '#/topics';
+  case 'me': return '#/me';
+  case 'me-reports': return '#/me/reports';
   case 'new':
    return location.boardId ? `#/new?board_id=${encodeURIComponent(location.boardId)}` : '#/new';
   case 'search': {

@@ -10,6 +10,7 @@ import { LoginView } from './views/LoginView';
 import { ProfileView } from './views/ProfileView';
 import { RegisterView } from './views/RegisterView';
 import { ResetPasswordView } from './views/ResetPasswordView';
+import { MyReportsView } from './views/MyReportsView';
 import { SearchView } from './views/SearchView';
 import { TopicDetailView } from './views/TopicDetailView';
 import { TopicEditorView, type EditorSaveResult } from './views/TopicEditorView';
@@ -170,6 +171,12 @@ export function App() {
     tagId={location.tagId}
     user={user}
     sessionReady={sessionReady}
+    onUnauthenticated={handleUnauthenticated}
+   />;
+  case 'me-reports':
+   return <MyReportsView
+    sessionReady={sessionReady}
+    signedIn={user !== undefined}
     onUnauthenticated={handleUnauthenticated}
    />;
   default:

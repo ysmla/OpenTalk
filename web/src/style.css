@@ -106,3 +106,13 @@ ul.replies { margin: 12px 0 0 24px; padding-left: 16px; border-left: 2px solid #
 .result h2 { font-size: 1.05em; line-height: 1.4; margin: 4px 0 6px; }
 .result .markdown { margin-top: 6px; }
 .result .markdown > :first-child { margin-top: 0; }
+
+/* 举报表单就地展开在操作行下方：它属于那次操作，不另开页面。 */
+.report-form { margin-top: 10px; padding: 12px; border: 1px solid #e3e1d8; border-radius: 8px; background: #fbfaf6; }
+.report-form .field { margin-bottom: 8px; }
+.report-form input, .report-form textarea { width: 100%; }
+
+/* 我的举报：一条记录一块，状态与时间同行，结案说明直接可见。 */
+.reports { list-style: none; padding: 0; }
+.reports li { padding: 12px 0; border-bottom: 1px solid #e3e1d8; }
+.reports p { margin: 4px 0; }
