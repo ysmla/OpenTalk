@@ -63,21 +63,53 @@ type CommentThreadProps = {
  authors: Map<string, Comment['author']>;
  canComment: boolean;
  onReply: (target: Comment) => void;
+ /** Edit and delete entries for one comment, derived from what the page already knows. */
+ actionsFor: (comment: Comment) => { canEdit: boolean; canDelete: boolean };
+ deletingId?: string;
+ onDelete: (comment: Comment) => void;
 };
 
-export function CommentThread({ node, authors, canComment, onReply }: CommentThreadProps) {
+/** The edit link and delete button shown for a comment the viewer wrote. */
+function CommentActions({ comment, canComment, actions, deleting, onReply, onDelete }: {
+ comment: Comment;
+ canComment: boolean;
+ actions: { canEdit: boolean; canDelete: boolean };
+ deleting: boolean;
+ onReply: (target: Comment) => void;
+ onDelete: (comment: Comment) => void;
+}) {
+ return <div className="comment-actions">
+  {canComment && <button type="button" className="link" onClick={() => onReply(comment)}>回复</button>}
+  {actions.canEdit && <a href={`#/edit/${encodeURIComponent(comment.id)}`}>编辑</a>}
+  {actions.canDelete && <button type="button" className="link" disabled={deleting} onClick={() => onDelete(comment)}>
+   {deleting ? '正在删除…' : '删除'}
+  </button>}
+ </div>;
+}
+
+export function CommentThread({ node, authors, canComment, onReply, actionsFor, deletingId, onDelete }: CommentThreadProps) {
  return <li className="comment">
   <CommentBody comment={node.comment} />
-  <div className="comment-actions">
-   {canComment && <button type="button" className="link" onClick={() => onReply(node.comment)}>回复</button>}
-  </div>
+  <CommentActions
+   comment={node.comment}
+   canComment={canComment}
+   actions={actionsFor(node.comment)}
+   deleting={deletingId === node.comment.id}
+   onReply={onReply}
+   onDelete={onDelete}
+  />
   {node.replies.length > 0 && <ul className="replies">
    {node.replies.map(reply => <li className="comment reply" key={reply.id}>
     <ReplyTarget comment={reply} authors={authors} />
     <CommentBody comment={reply} />
-    <div className="comment-actions">
-     {canComment && <button type="button" className="link" onClick={() => onReply(reply)}>回复</button>}
-    </div>
+    <CommentActions
+     comment={reply}
+     canComment={canComment}
+     actions={actionsFor(reply)}
+     deleting={deletingId === reply.id}
+     onReply={onReply}
+     onDelete={onDelete}
+    />
    </li>)}
   </ul>}
  </li>;
@@ -115,10 +147,13 @@ type CommentListProps = {
  comments: Comment[];
  canComment: boolean;
  onReply: (target: Comment) => void;
+ actionsFor: (comment: Comment) => { canEdit: boolean; canDelete: boolean };
+ deletingId?: string;
+ onDelete: (comment: Comment) => void;
 };
 
 /** Top-level comments plus their replies, in the order the API returned them. */
-export function CommentList({ comments, canComment, onReply }: CommentListProps) {
+export function CommentList({ comments, canComment, onReply, actionsFor, deletingId, onDelete }: CommentListProps) {
  const authors = authorById(comments);
  return <ul className="comments">
   {buildCommentTree(comments).map(node => <CommentThread
@@ -127,6 +162,9 @@ export function CommentList({ comments, canComment, onReply }: CommentListProps)
    authors={authors}
    canComment={canComment}
    onReply={onReply}
+   actionsFor={actionsFor}
+   deletingId={deletingId}
+   onDelete={onDelete}
   />)}
  </ul>;
 }

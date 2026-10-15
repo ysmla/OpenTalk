@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react';
-import { createAnswer, listAnswers, type Answer, type ContentPermissions } from '../api/content';
+import { createAnswer, deleteContent, listAnswers, type Answer, type ContentPermissions } from '../api/content';
 import { Alert, Status } from '../components/Alert';
 import { authorLabel } from '../components/ContentMeta';
 import { AttachmentGallery } from '../components/AttachmentGallery';
@@ -8,6 +8,7 @@ import { Markdown } from '../components/Markdown';
 import { CommentsSection } from './CommentsSection';
 import { formatDateTime } from '../lib/format';
 import { describeError, isStatus, type Failure } from '../lib/messages';
+import { contentActions, type Viewer } from '../lib/ownership';
 import { bodyProblem, BODY_MAX, charCount } from '../lib/validate';
 
 type AnswersSectionProps = {
@@ -15,8 +16,15 @@ type AnswersSectionProps = {
  permissions?: ContentPermissions;
  /** 主题被锁定或问题已解决时，任何人（包括管理员）都不能新增互动。 */
  isLocked: boolean;
+ /**
+  * 主题是否被锁定。与 `isLocked` 不同：已解决只禁止新增互动，**不**禁止编辑正文，
+  * 所以编辑入口要看这个字段。
+  */
+ topicIsLocked: boolean;
  /** 当前是否有会话，用于把"登录后可以参与"与"账号受限"分开。 */
  signedIn: boolean;
+ /** 用于推导"这条内容是不是我的"（见 lib/ownership.ts）。 */
+ viewer: Viewer;
  onUnauthenticated: () => void;
 };
 
@@ -26,7 +34,7 @@ type AnswersSectionProps = {
  * partial answer list with its own 加载更多 would hide the discussion the
  * question exists for.
  */
-export function AnswersSection({ topicId, permissions, isLocked, signedIn, onUnauthenticated }: AnswersSectionProps) {
+export function AnswersSection({ topicId, permissions, isLocked, topicIsLocked, signedIn, viewer, onUnauthenticated }: AnswersSectionProps) {
  const [answers, setAnswers] = useState<Answer[]>([]);
  const [loading, setLoading] = useState(true);
  const [loadFailure, setLoadFailure] = useState<Failure>();
@@ -37,6 +45,34 @@ export function AnswersSection({ topicId, permissions, isLocked, signedIn, onUna
  const [posting, setPosting] = useState(false);
  const [postFailure, setPostFailure] = useState<Failure>();
  const [notice, setNotice] = useState<string>();
+ const [deletingId, setDeletingId] = useState<string>();
+
+ /**
+  * Delete one answer. The server decides whether it may go — the entry is only
+  * shown for content the page derived as the viewer's own — and deleting an
+  * answer takes its comments with it, which the confirmation says out loud.
+  */
+ async function handleDeleteAnswer(answer: Answer) {
+  // The payload carries no comment count, so the wording covers both cases rather
+  // than claiming a cascade that may have nothing to cascade to.
+  if (!window.confirm('确定删除这条回答吗？它下面的评论及回复会一并删除，且不可恢复。')) return;
+  setDeletingId(answer.id);
+  setPostFailure(undefined);
+  setNotice(undefined);
+  try {
+   await deleteContent(answer.id);
+   setAnswers(current => current.filter(candidate => candidate.id !== answer.id));
+   setNotice('回答已删除。');
+  } catch (error) {
+   if (isStatus(error, 401)) {
+    onUnauthenticated();
+    return;
+   }
+   setPostFailure(describeError(error));
+  } finally {
+   setDeletingId(undefined);
+  }
+ }
 
  useEffect(() => {
   const controller = new AbortController();
@@ -109,19 +145,35 @@ export function AnswersSection({ topicId, permissions, isLocked, signedIn, onUna
   </div>}
   <Alert failure={loadFailure} />
 
-  {answers.map(answer => <article className="answer" key={answer.id}>
-   <AnswerBody answer={answer} />
-   <CommentsSection
-    topicId={topicId}
-    answerId={answer.id}
-    canComment={permissions?.can_create_comment === true && !isLocked}
-    closed={isLocked}
-    signedIn={signedIn}
-    forceAnonymous={forceAnonymous}
-    onUnauthenticated={onUnauthenticated}
-    emptyText="这条回答还没有评论。"
-   />
-  </article>)}
+  {answers.map(answer => {
+   const actions = contentActions(answer, viewer, { topicIsLocked });
+   return <article className="answer" key={answer.id}>
+    <AnswerBody answer={answer} />
+    <div className="actions">
+     {actions.canEdit && <a href={`#/edit/${encodeURIComponent(answer.id)}`}>编辑</a>}
+     {actions.canDelete && <button
+      type="button"
+      className="secondary"
+      disabled={deletingId === answer.id}
+      onClick={() => void handleDeleteAnswer(answer)}
+     >
+      {deletingId === answer.id ? '正在删除…' : '删除'}
+     </button>}
+    </div>
+    <CommentsSection
+     topicId={topicId}
+     answerId={answer.id}
+     canComment={permissions?.can_create_comment === true && !isLocked}
+     closed={isLocked}
+     topicIsLocked={topicIsLocked}
+     signedIn={signedIn}
+     viewer={viewer}
+     forceAnonymous={forceAnonymous}
+     onUnauthenticated={onUnauthenticated}
+     emptyText="这条回答还没有评论。"
+    />
+   </article>;
+  })}
 
   {canAnswer
    ? <form className="composer" onSubmit={handleSubmit} noValidate>

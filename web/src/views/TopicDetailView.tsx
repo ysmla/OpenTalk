@@ -19,6 +19,7 @@ import { AnswersSection } from './AnswersSection';
 import { CommentsSection } from './CommentsSection';
 import { formatDateTime } from '../lib/format';
 import { describeError, isStatus, type Failure } from '../lib/messages';
+import type { Viewer } from '../lib/ownership';
 
 type TopicDetailViewProps = {
  topicId: string;
@@ -169,6 +170,13 @@ export function TopicDetailView({ topicId, user, sessionReady, onUnauthenticated
  const editedAt = formatDateTime(topic.edited_at);
  const resolvedAt = topic.kind === 'question' ? formatDateTime(topic.resolved_at) : undefined;
  const blocked = writesBlocked(topic);
+ // What the page knows about the viewer, for deriving which answers and comments
+ // are theirs (lib/ownership.ts). The anonymous-owner flag only comes from the
+ // permissions response, so it is false until it has been read.
+ const viewer: Viewer = {
+  publicId: user?.profile.public_id,
+  isAnonymousTopicOwner: permissions?.force_anonymous_comment === true,
+ };
 
  return <main className="page">
   <p className="eyebrow">OPENTALK</p>
@@ -217,14 +225,18 @@ export function TopicDetailView({ topicId, user, sessionReady, onUnauthenticated
     topicId={topic.id}
     permissions={permissions}
     isLocked={blocked}
+    topicIsLocked={topic.is_locked}
     signedIn={user !== undefined}
+    viewer={viewer}
     onUnauthenticated={onUnauthenticated}
    />
    : <CommentsSection
     topicId={topic.id}
     canComment={permissions?.can_create_comment === true && !blocked}
     closed={blocked}
+    topicIsLocked={topic.is_locked}
     signedIn={user !== undefined}
+    viewer={viewer}
     forceAnonymous={permissions?.force_anonymous_comment}
     onUnauthenticated={onUnauthenticated}
     emptyText="这条主题还没有评论。"

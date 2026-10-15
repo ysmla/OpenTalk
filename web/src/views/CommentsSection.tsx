@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
-import { createComment, listComments, type Comment } from '../api/content';
+import { createComment, deleteContent, listComments, type Comment } from '../api/content';
 import { Alert, Status } from '../components/Alert';
 import { CommentComposer, CommentList } from '../components/CommentThread';
 import { describeError, isStatus, type Failure } from '../lib/messages';
+import { contentActions, type Viewer } from '../lib/ownership';
 
 type CommentsSectionProps = {
  topicId: string;
@@ -12,8 +13,15 @@ type CommentsSectionProps = {
  canComment: boolean;
  /** 主题已锁定或问题已解决：这是"不能评论"的原因本身，必须与"未登录"分开说。 */
  closed?: boolean;
+ /**
+  * 主题是否被锁定。与 `closed` 不同：已解决只禁止新增互动，**不**禁止编辑正文，
+  * 所以编辑入口要看这个字段（服务端 EditContent 也只拒绝锁定）。
+  */
+ topicIsLocked?: boolean;
  /** 当前是否有会话。为 false 时才知道该提示登录而不是提示账号受限。 */
  signedIn?: boolean;
+ /** 用于推导"这条评论是不是我的"（见 lib/ownership.ts）。 */
+ viewer: Viewer;
  /** 当前用户发评论是否强制匿名（仅本人可见的权限字段）。 */
  forceAnonymous?: boolean;
  onUnauthenticated: () => void;
@@ -28,7 +36,7 @@ type CommentsSectionProps = {
  * real target — and the server derives the display root, so the tree can be
  * deeper than the two levels the interface shows.
  */
-export function CommentsSection({ topicId, answerId, canComment, closed, signedIn, forceAnonymous, onUnauthenticated, emptyText }: CommentsSectionProps) {
+export function CommentsSection({ topicId, answerId, canComment, closed, topicIsLocked, signedIn, viewer, forceAnonymous, onUnauthenticated, emptyText }: CommentsSectionProps) {
  const [comments, setComments] = useState<Comment[]>([]);
  const [loading, setLoading] = useState(true);
  const [loadFailure, setLoadFailure] = useState<Failure>();
@@ -38,15 +46,35 @@ export function CommentsSection({ topicId, answerId, canComment, closed, signedI
  const [posting, setPosting] = useState(false);
  const [postFailure, setPostFailure] = useState<Failure>();
  const [notice, setNotice] = useState<string>();
+ const [deletingId, setDeletingId] = useState<string>();
 
  useEffect(() => {
   const controller = new AbortController();
   setLoading(true);
   setLoadFailure(undefined);
-  listComments(topicId, { answer_id: answerId }, controller.signal).then(page => {
+  /**
+   * Load the two levels the section displays.
+   *
+   * The endpoint pages *one* level at a time by design: `parent_comment_id`
+   * omitted returns the top-level comments, and one thread root's replies are
+   * asked for separately. That is what keeps a page of a two-level display
+   * consistent — a page mixing both levels could show a reply whose root sits on
+   * another page. The cost is one extra request per top-level comment on this
+   * page, which is why they are issued together rather than one after another.
+   */
+  async function load() {
+   const page = await listComments(topicId, { answer_id: answerId }, controller.signal);
    if (controller.signal.aborted) return;
-   setComments(page.items.filter((item): item is Comment => item.kind === 'comment'));
-  }).catch((error: unknown) => {
+   const tops = page.items.filter((item): item is Comment => item.kind === 'comment');
+   const threads = await Promise.all(tops.map(async top => {
+    const replies = await listComments(topicId, { answer_id: answerId, parent_comment_id: top.id }, controller.signal);
+    if (controller.signal.aborted) return [];
+    return replies.items.filter((item): item is Comment => item.kind === 'comment');
+   }));
+   if (controller.signal.aborted) return;
+   setComments([...tops, ...threads.flat()]);
+  }
+  load().catch((error: unknown) => {
    if (controller.signal.aborted) return;
    setLoadFailure(describeError(error));
   }).finally(() => {
@@ -54,6 +82,36 @@ export function CommentsSection({ topicId, answerId, canComment, closed, signedI
   });
   return () => controller.abort();
  }, [topicId, answerId, reloadKey]);
+
+ /**
+  * Delete one comment or reply. The server authorizes it again; the entry is only
+  * rendered for content the page derived as the viewer's own. Deleting a
+  * top-level comment removes the replies shown under it, because a reply's
+  * `parent_comment_id` is that display root.
+  */
+ async function handleDelete(comment: Comment) {
+  const scope = comment.parent_comment_id === undefined ? '它下面的回复会一并删除，' : '';
+  if (!window.confirm(`确定删除这条${comment.parent_comment_id === undefined ? '评论' : '回复'}吗？${scope}删除后不可恢复。`)) return;
+  setDeletingId(comment.id);
+  setPostFailure(undefined);
+  setNotice(undefined);
+  try {
+   await deleteContent(comment.id);
+   setComments(current => current.filter(candidate =>
+    candidate.id !== comment.id && candidate.parent_comment_id !== comment.id));
+   setNotice('评论已删除。');
+   // A reply that was being composed may have pointed at the deleted row.
+   if (target !== undefined && target.id === comment.id) setTarget(undefined);
+  } catch (error) {
+   if (isStatus(error, 401)) {
+    onUnauthenticated();
+    return;
+   }
+   setPostFailure(describeError(error));
+  } finally {
+   setDeletingId(undefined);
+  }
+ }
 
  async function handleSubmit() {
   if (posting || draft.trim() === '') return;
@@ -89,7 +147,14 @@ export function CommentsSection({ topicId, answerId, canComment, closed, signedI
   <h3>{answerId === undefined ? '评论' : '回答的评论'}</h3>
   {loading && <Status>正在加载评论…</Status>}
   {!loading && comments.length === 0 && !loadFailure && <p className="hint">{emptyText}</p>}
-  {comments.length > 0 && <CommentList comments={comments} canComment={canComment} onReply={setTarget} />}
+  {comments.length > 0 && <CommentList
+   comments={comments}
+   canComment={canComment}
+   onReply={setTarget}
+   actionsFor={comment => contentActions(comment, viewer, { topicIsLocked: topicIsLocked === true })}
+   deletingId={deletingId}
+   onDelete={comment => void handleDelete(comment)}
+  />}
   <Alert failure={loadFailure} />
   {loadFailure && <div className="actions">
    <button type="button" className="secondary" onClick={() => setReloadKey(key => key + 1)}>重新加载</button>
