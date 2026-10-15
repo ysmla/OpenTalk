@@ -69,8 +69,33 @@ outbox 的投递侧已实现：按租约取件、按（接收者, 主题）合�
 
 合成行已删除。
 
+## 真实投递验证（2026-10-15）
+
+前面用的是假 sender，只能证明"逻辑上会发"；这一节是**真发一封**并核对收件箱。
+
+### 环境与隔离
+
+- 临时 schema `opentalk_mailcheck`（迁移建表），SMTP 设置从开发库 `settings` 行**原样复制**（该表是单行、无外键），worker 用同一个 `APP_SECRET` 运行，所以密文照常解密；开发库的账号与内容一律未碰。
+- 收件人由一个临时账号担任，其地址在发送前设为用户确认可查收的真实邮箱；另有第二个临时账号作为"答题者"制造事件。
+- 事件走**真实接口**排队：临时收件人提问（`POST /topics`）→ 答题者回答（`POST /answers`）→ 收件人打开回答邮件开关（`PUT /me/notification-preferences`，因为邮件是选择性开启的）。排到 1 条 `new_answer` 事件。
+- 发送前用 `worker -action show` 确认复制来的设置真的能用：`SMTP 就绪：是`、`smtpdm.aliyun.com:465`、TLS、发信地址 `noreply@mail.ysmla.cc`、密码已配置（不回显）。
+
+### 结果
+
+| 检查 | 结果 |
+| --- | --- |
+| `worker -once` | `{"level":"INFO","msg":"delivery pass","claimed":1,"sent":1,"coalesced":0,"skipped":0,"deferred":0,"failed":0}` |
+| outbox 行 | `status=done`、`attempts=1`、租约已清空 |
+| `email_deliveries` | 1 行，`purpose=notification`、`status=sent`、`sent_at` 记录在案 |
+| 邮件本身 | 发件人 `noreply@mail.ysmla.cc`，主题「你的问题有了新的回答」，正文含主题标题、主题链接 `/ #/topic/1` 与退订链接 |
+| **收件箱确认** | 收件人确认收到（这一步是用户选择通过标准：SMTP 250 只说明对方服务器收下，入箱要人来确认） |
+
+### 收尾
+
+临时 schema 已删除，其中包含的那一个真实邮箱地址随库一起消失；邮件本身留在收件人邮箱里。链接指向 `APP_ORIGIN`（本机 `http://127.0.0.1:5173`），所以本地验证时该链接只能在本机打开——这是预期行为，不是邮件缺陷。
+
 ## 未做
 
-- **真实 SMTP 投递未验证**：本片用假 sender（逻辑层）与未配置 SMTP 的真实二进制（跳过层）验证，因此**不能声称通知邮件真的发出去了**。要证明这一点，需要在可发信的 SMTP 下跑一次，并用真实收件箱核对；考虑到验证码邮件用的是真实阿里云账号，这一步应当明确安排而不是顺手做。
 - 未做并发压力测量：SKIP LOCKED 与租约的正确性有测试覆盖，多实例吞吐未测。
 - 前端还没有通知列表界面（接口已就绪）。
+- 退订链接只验证到"邮件里带着它"，没有从真实邮件点一次走完 `POST /subscriptions/unsubscribe`（该端点有集成测试覆盖签名、过期、越权与异密钥）。
