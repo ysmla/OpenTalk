@@ -99,6 +99,17 @@ type DeliveryReport struct {
 	Coalesced int
 }
 
+// PendingNotificationCount reports how many notification events are waiting to go out. The worker uses it
+// for its dry run and its configuration summary, and an operator uses those to tell "nothing to send" from
+// "sending is broken".
+func (s Store) PendingNotificationCount(ctx context.Context) (int, error) {
+	var pending int
+	err := s.DB.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM outbox_events WHERE status='pending' AND event_type IN (?,?,?)`,
+		eventNewComment, eventNewAnswer, eventNewReply).Scan(&pending)
+	return pending, err
+}
+
 // outboxEvent is one claimed event.
 type outboxEvent struct {
 	ID          uint64
