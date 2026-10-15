@@ -67,6 +67,8 @@ type CommentThreadProps = {
  actionsFor: (comment: Comment) => { canEdit: boolean; canDelete: boolean };
  deletingId?: string;
  onDelete: (comment: Comment) => void;
+ /** Present only while this thread has another page of replies to fetch. */
+ more?: { loading: boolean; onLoadMore: () => void };
 };
 
 /** The edit link and delete button shown for a comment the viewer wrote. */
@@ -87,7 +89,7 @@ function CommentActions({ comment, canComment, actions, deleting, onReply, onDel
  </div>;
 }
 
-export function CommentThread({ node, authors, canComment, onReply, actionsFor, deletingId, onDelete }: CommentThreadProps) {
+export function CommentThread({ node, authors, canComment, onReply, actionsFor, deletingId, onDelete, more }: CommentThreadProps) {
  return <li className="comment">
   <CommentBody comment={node.comment} />
   <CommentActions
@@ -112,6 +114,11 @@ export function CommentThread({ node, authors, canComment, onReply, actionsFor, 
     />
    </li>)}
   </ul>}
+  {more && <div className="comment-actions">
+   <button type="button" className="link" disabled={more.loading} onClick={more.onLoadMore}>
+    {more.loading ? '正在加载…' : '加载更多回复'}
+   </button>
+  </div>}
  </li>;
 }
 
@@ -150,10 +157,12 @@ type CommentListProps = {
  actionsFor: (comment: Comment) => { canEdit: boolean; canDelete: boolean };
  deletingId?: string;
  onDelete: (comment: Comment) => void;
+ /** Replies of a thread root page on their own cursor, one root at a time. */
+ threadMore?: (rootId: string) => { loading: boolean; onLoadMore: () => void } | undefined;
 };
 
 /** Top-level comments plus their replies, in the order the API returned them. */
-export function CommentList({ comments, canComment, onReply, actionsFor, deletingId, onDelete }: CommentListProps) {
+export function CommentList({ comments, canComment, onReply, actionsFor, deletingId, onDelete, threadMore }: CommentListProps) {
  const authors = authorById(comments);
  return <ul className="comments">
   {buildCommentTree(comments).map(node => <CommentThread
@@ -165,6 +174,7 @@ export function CommentList({ comments, canComment, onReply, actionsFor, deletin
    actionsFor={actionsFor}
    deletingId={deletingId}
    onDelete={onDelete}
+   more={threadMore?.(node.comment.id)}
   />)}
  </ul>;
 }
