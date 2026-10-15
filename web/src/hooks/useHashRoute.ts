@@ -17,6 +17,7 @@ export type RouteLocation =
  | { name: 'user'; id: string }
  | { name: 'admin' }
  | { name: 'admin-moderation' }
+ | { name: 'admin-operations' }
  | { name: 'topics' }
  | { name: 'board'; id: string }
  | { name: 'tag'; id: string }
@@ -28,7 +29,7 @@ export type RouteLocation =
 export type RouteName = RouteLocation['name'];
 
 /** The nine legacy names plus the topic list, all of which carry no argument. */
-export type Route = 'home' | 'login' | 'register' | 'reset' | 'me' | 'me-reports' | 'me-notifications' | 'me-contents' | 'admin' | 'admin-moderation' | 'topics';
+export type Route = 'home' | 'login' | 'register' | 'reset' | 'me' | 'me-reports' | 'me-notifications' | 'me-contents' | 'admin' | 'admin-moderation' | 'admin-operations' | 'topics';
 
 const STATIC_ROUTES: Record<string, Route> = {
  login: 'login',
@@ -50,6 +51,8 @@ const STATIC_ROUTES: Record<string, Route> = {
  'admin/settings': 'admin',
  // Moderation is its own screen: it is a work queue, not a setting.
  'admin/moderation': 'admin-moderation',
+ // Accounts and site structure: the place an administrator changes things rather than works a queue.
+ 'admin/operations': 'admin-operations',
 };
 
 /** Route names that are only meaningful with an id appended. */
@@ -150,6 +153,7 @@ export function routeHref(location: RouteLocation): string {
   case 'me-notifications': return '#/me/notifications';
   case 'me-contents': return '#/me/contents';
   case 'admin-moderation': return '#/admin/moderation';
+  case 'admin-operations': return '#/admin/operations';
   case 'new':
    return location.boardId ? `#/new?board_id=${encodeURIComponent(location.boardId)}` : '#/new';
   case 'search': {

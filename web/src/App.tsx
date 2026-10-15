@@ -11,6 +11,7 @@ import { ProfileView } from './views/ProfileView';
 import { RegisterView } from './views/RegisterView';
 import { ResetPasswordView } from './views/ResetPasswordView';
 import { AdminModerationView } from './views/AdminModerationView';
+import { AdminOperationsView } from './views/AdminOperationsView';
 import { MyReportsView } from './views/MyReportsView';
 import { NotificationsView } from './views/NotificationsView';
 import { MyContentsView } from './views/MyContentsView';
@@ -166,6 +167,13 @@ export function App() {
     user={user}
     sessionReady={sessionReady}
     onSaved={result => handleSaved(result, location.id)}
+    onUnauthenticated={handleUnauthenticated}
+   />;
+  case 'admin-operations':
+   return <AdminOperationsView
+    sessionReady={sessionReady}
+    signedIn={user !== undefined}
+    isAdmin={user?.role === 'admin'}
     onUnauthenticated={handleUnauthenticated}
    />;
   case 'search':

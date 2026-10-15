@@ -116,3 +116,7 @@ ul.replies { margin: 12px 0 0 24px; padding-left: 16px; border-left: 2px solid #
 .reports { list-style: none; padding: 0; }
 .reports li { padding: 12px 0; border-bottom: 1px solid #e3e1d8; }
 .reports p { margin: 4px 0; }
+
+/* 删除原文按原样展示（含换行的 Markdown 源码），因此用等宽并保留空白。 */
+.archive { white-space: pre-wrap; word-break: break-word; background: #f4f3ee; border: 1px solid #e3e1d8; border-radius: 6px; padding: 10px; }
+.avatar { border-radius: 50%; vertical-align: middle; margin-right: 6px; }

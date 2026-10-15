@@ -128,6 +128,7 @@ export function ProfileView({ user, onUserChange, onUnauthenticated }: ProfileVi
    <nav className="links" aria-label="管理员入口">
     <a href="#/admin">进入后台管理</a>
     <a href="#/admin/moderation">审核与举报</a>
+    <a href="#/admin/operations">账号与站点</a>
    </nav>
   </section>}
   <section aria-labelledby="my-contents-heading">
