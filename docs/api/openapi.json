@@ -6843,7 +6843,7 @@
       "get": {
         "operationId": "listAudit",
         "summary": "读取管理审计",
-        "description": "读取管理审计\n需要管理员权限；涉及匿名追溯与原文读取时需专用审计。",
+        "description": "只追加的审核记录，按id倒序、游标绑定本列表；载荷只有操作者、动作、原因与目标ID，不复制内容正文、密码、验证码或会话凭证。\n需要管理员权限；涉及匿名追溯与原文读取时需专用审计。",
         "tags": [
           "管理"
         ],
@@ -6964,7 +6964,7 @@
             }
           }
         },
-        "x-implementation-status": "planned",
+        "x-implementation-status": "implemented",
         "x-required-role": "admin",
         "parameters": [
           {
@@ -7728,7 +7728,7 @@
       "patch": {
         "operationId": "setVisibility",
         "summary": "隐藏或恢复内容",
-        "description": "隐藏或恢复内容\n需要管理员权限；涉及匿名追溯与原文读取时需专用审计。",
+        "description": "需要管理员权限。隐藏与删除独立：隐藏只改 moderation_status，行、正文与标题都留在原处，因此可恢复，也不写删除归档。隐藏的效果覆盖整棵子树与附件——可见性规则本来就同时读 deleted_at 与 moderation_status，所以无需在此遍历后代。重复同一决定是幂等空操作且不写审计行：审计行必须意味着此处做过一次决定。已删除内容返回404（已被归档，没有可隐藏的正文）。\n需要管理员权限；涉及匿名追溯与原文读取时需专用审计。",
         "tags": [
           "管理"
         ],
@@ -7843,7 +7843,7 @@
             }
           }
         },
-        "x-implementation-status": "planned",
+        "x-implementation-status": "implemented",
         "x-required-role": "admin",
         "parameters": [
           {

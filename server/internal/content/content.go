@@ -82,6 +82,10 @@ func Register(mux *http.ServeMux, deps Deps) {
 	// signature is the only thing that authorises the change. POST plus the middleware's exact-Origin check
 	// keeps a mail scanner that merely follows links from unsubscribing anybody.
 	mux.HandleFunc("POST /api/v1/subscriptions/unsubscribe", deps.unsubscribeEmail)
+	// Moderation. These are the only routes here that require the admin role, and hiding is the only way a
+	// moderation decision enters the system: until now that state could only be written with SQL.
+	mux.Handle("PATCH /api/v1/admin/contents/{content_id}/visibility", auth.Require(deps.Sessions, true, http.HandlerFunc(deps.setContentVisibility)))
+	mux.Handle("GET /api/v1/admin/audit", auth.Require(deps.Sessions, true, http.HandlerFunc(deps.listAudit)))
 	if deps.Media != nil {
 		// Public: images are embedded in public content, so the route is readable without a session. The
 		// key grants nothing on its own: the handler asks the database whether this image may be shown to
