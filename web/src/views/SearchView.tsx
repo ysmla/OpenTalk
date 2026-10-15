@@ -1,8 +1,8 @@
 import { useEffect, useState, type FormEvent } from 'react';
-import { isDeleted, isQuestion, listAllBoards, listAllTags, searchContents, type PublicContent } from '../api/content';
+import { listAllBoards, listAllTags, searchContents, type PublicContent } from '../api/content';
 import type { CurrentUser } from '../api/auth';
 import { Alert, Status } from '../components/Alert';
-import { authorLabel, TagList, TopicStatus } from '../components/ContentMeta';
+import { ContentCard } from '../components/ContentCard';
 import { Markdown } from '../components/Markdown';
 import { routeHref } from '../hooks/useHashRoute';
 import { formatDateTime } from '../lib/format';
@@ -175,7 +175,7 @@ export function SearchView({ q, boardId, tagId, sessionReady, onUnauthenticated 
     已加载 {results.length} 条{hasMore ? '，还有更多' : ''}；按最新排序。
    </p>
    <ul className="topics">
-    {results.map(item => <li key={item.id}><SearchResult item={item} /></li>)}
+    {results.map(item => <li key={item.id}><ContentCard item={item} /></li>)}
    </ul>
    {hasMore && <div className="actions">
     <button type="button" className="secondary" disabled={loadingMore} onClick={() => void loadMore()}>
@@ -184,32 +184,4 @@ export function SearchView({ q, boardId, tagId, sessionReady, onUnauthenticated 
    </div>}
   </>}
  </main>;
-}
-
-/** One result: what it is, who wrote it under the anonymity rules, and where to read it. */
-function SearchResult({ item }: { item: PublicContent }) {
- if (isDeleted(item)) {
-  // A tombstone in a result list says only that something used to be here; the server never sends the
-  // original text or the author, and this view must not invent either.
-  return <article className="result">
-   <p className="byline"><span className="chip">已删除</span></p>
-   <p className="hint">{item.message}</p>
-  </article>;
- }
- const isTopic = item.kind === 'discussion' || item.kind === 'question';
- // Only a topic has its own page; an answer or comment is read inside its discussion.
- const href = isTopic ? `#/topic/${encodeURIComponent(item.id)}` : `#/topic/${encodeURIComponent(item.topic_id)}`;
- const createdAt = formatDateTime(item.created_at);
- return <article className="result">
-  <p className="byline">
-   <span className="chip">{item.kind === 'question' ? '问题' : item.kind === 'answer' ? '回答' : item.kind === 'comment' ? '评论' : '帖子'}</span>
-   {authorLabel(item.author)}
-   {createdAt && <span className="time">{createdAt}</span>}
-  </p>
-  {isTopic && <h2><a href={href}>{item.title}</a></h2>}
-  {!isTopic && <p className="hint">在 <a href={href}>该主题</a> 下</p>}
-  <Markdown source={item.body_md} />
-  {isTopic && item.tags.length > 0 && <TagList tags={item.tags} />}
-  {isTopic && isQuestion(item) && <TopicStatus topic={item} />}
- </article>;
 }

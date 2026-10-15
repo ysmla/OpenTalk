@@ -19,10 +19,16 @@ export function ContentCard({ item }: { item: PublicContent }) {
  const isTopic = item.kind === 'discussion' || item.kind === 'question';
  const href = isTopic ? `#/topic/${encodeURIComponent(item.id)}` : `#/topic/${encodeURIComponent(item.topic_id)}`;
  const createdAt = formatDateTime(item.created_at);
+ // A named author's name links to their public profile; an anonymous one has no profile to link to, which is
+ // exactly the difference the anonymity rule draws. The narrowing is on `mode`, so the anonymous branch
+ // cannot accidentally reach a user object.
+ const namedAuthor = item.author.mode === 'named' ? item.author.user : undefined;
  return <article className="result">
   <p className="byline">
    <span className="chip">{item.kind === 'question' ? '问题' : item.kind === 'answer' ? '回答' : item.kind === 'comment' ? '评论' : '帖子'}</span>
-   {authorLabel(item.author)}
+   {namedAuthor
+    ? <a href={`#/user/${encodeURIComponent(namedAuthor.public_id)}`}>{authorLabel(item.author)}</a>
+    : authorLabel(item.author)}
    {createdAt && <span className="time">{createdAt}</span>}
   </p>
   {isTopic && <h2><a href={href}>{item.title}</a></h2>}
