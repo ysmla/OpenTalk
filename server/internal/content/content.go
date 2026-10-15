@@ -104,6 +104,14 @@ func Register(mux *http.ServeMux, deps Deps) {
 	mux.Handle("GET /api/v1/admin/restrictions", auth.Require(deps.Sessions, true, http.HandlerFunc(deps.listRestrictions)))
 	mux.Handle("DELETE /api/v1/admin/restrictions/{restriction_id}", auth.Require(deps.Sessions, true, http.HandlerFunc(deps.revokeRestriction)))
 	mux.Handle("GET /api/v1/admin/users", auth.Require(deps.Sessions, true, http.HandlerFunc(deps.listAdminUsers)))
+	// Site structure and the two topic flags an administrator may change. A board's kind is fixed once it has
+	// topics, and a topic may only move to a board of its own kind: the kind decides what a topic means, so
+	// changing it would reinterpret everything already inside.
+	mux.Handle("POST /api/v1/admin/boards", auth.Require(deps.Sessions, true, http.HandlerFunc(deps.createBoard)))
+	mux.Handle("PUT /api/v1/admin/boards/{board_id}", auth.Require(deps.Sessions, true, http.HandlerFunc(deps.updateBoard)))
+	mux.Handle("POST /api/v1/admin/tags", auth.Require(deps.Sessions, true, http.HandlerFunc(deps.createTag)))
+	mux.Handle("PUT /api/v1/admin/tags/{tag_id}", auth.Require(deps.Sessions, true, http.HandlerFunc(deps.updateTag)))
+	mux.Handle("PATCH /api/v1/admin/topics/{topic_id}", auth.Require(deps.Sessions, true, http.HandlerFunc(deps.moderateTopic)))
 	if deps.Media != nil {
 		// Public: images are embedded in public content, so the route is readable without a session. The
 		// key grants nothing on its own: the handler asks the database whether this image may be shown to
