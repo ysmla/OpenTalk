@@ -116,7 +116,7 @@ cd ..\scripts ; python build_openapi.py
 | 6b | 站内通知读取接口 | 已完成（`b4328b1`），[报告](verification-2026-10-15-notification-reads.md) |
 | 6c | 邮件通知 | **已完成、真实投递验证、两条缺口已补**（偏好、订阅/退订、投递逻辑、`cmd/worker`；真发一封并确认收到；并发/租约正确性与退订链接端到端各有测试） |
 | 7 | 搜索 | **已完成**（接口 + ngram 全文索引 + 结果页筛选控件，见[报告](verification-2026-10-15-search.md)） |
-| 8 | 举报与审核 | 后端**已完成**：举报者侧（`POST /reports`、`GET /me/reports`）、审核（`PATCH /admin/contents/{id}/visibility`、`GET /admin/audit`）、管理队列与结案（`GET /admin/reports`、`PATCH /admin/reports/{id}`），见[报告](verification-2026-10-15-reports.md)；**待做：前端入口（举报按钮/我的举报/管理端界面）** |
+| 8 | 举报与审核 | 后端**已完成**；前端**已写完但未做浏览器走查**（举报按钮、[我的举报](verification-2026-10-15-reports-frontend.md)、[管理端](verification-2026-10-15-reports-frontend.md) `#/admin/moderation`）。**待做：真实浏览器走查**（未登录/已登录两条路径、409 表现、结案与隐藏的界面链路） |
 | 9 | 上线准备 | 未开始 |
 
 数据基线：合同 57 个操作、43 implemented / 14 planned（36 条已实现路径）、63 个模型、23 张业务表、**4 组迁移**（`migrations.Latest = 4`）；全量真实库测试 19 个包 / 122 个顶层测试 / 582 个通过事件 / 0 失败 / 0 跳过，语句覆盖率约 70%（`cmd/worker` 的语句计入分母但无测试，读数因此偏低）。
