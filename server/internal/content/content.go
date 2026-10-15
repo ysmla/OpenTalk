@@ -86,6 +86,11 @@ func Register(mux *http.ServeMux, deps Deps) {
 	// moderation decision enters the system: until now that state could only be written with SQL.
 	mux.Handle("PATCH /api/v1/admin/contents/{content_id}/visibility", auth.Require(deps.Sessions, true, http.HandlerFunc(deps.setContentVisibility)))
 	mux.Handle("GET /api/v1/admin/audit", auth.Require(deps.Sessions, true, http.HandlerFunc(deps.listAudit)))
+	// The administrative half of reporting: the queue, and closing one. Closing a report records a decision
+	// about the report and nothing about the content — hiding it is the endpoint above, which is how the
+	// audit trail can say which of the two an administrator actually chose.
+	mux.Handle("GET /api/v1/admin/reports", auth.Require(deps.Sessions, true, http.HandlerFunc(deps.listAdminReports)))
+	mux.Handle("PATCH /api/v1/admin/reports/{report_id}", auth.Require(deps.Sessions, true, http.HandlerFunc(deps.resolveReport)))
 	if deps.Media != nil {
 		// Public: images are embedded in public content, so the route is readable without a session. The
 		// key grants nothing on its own: the handler asks the database whether this image may be shown to

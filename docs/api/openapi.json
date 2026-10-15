@@ -5684,7 +5684,7 @@
       "get": {
         "operationId": "listAdminReports",
         "summary": "读取举报队列",
-        "description": "读取举报队列\n需要管理员权限；涉及匿名追溯与原文读取时需专用审计。",
+        "description": "队列是尚未处理的工作，因此只含 pending 与 processing；已结案举报的结果由举报者通过 /me/reports 读取，决定本身在管理审计里。载荷含举报者（管理员需要）与处理者，但**不含被举报内容的作者**——匿名作者不会因为有人举报而暴露，追溯须走专用流程。\n需要管理员权限；涉及匿名追溯与原文读取时需专用审计。",
         "tags": [
           "管理"
         ],
@@ -5805,7 +5805,7 @@
             }
           }
         },
-        "x-implementation-status": "planned",
+        "x-implementation-status": "implemented",
         "x-required-role": "admin",
         "parameters": [
           {
@@ -5836,7 +5836,7 @@
       "patch": {
         "operationId": "resolveReport",
         "summary": "处理举报",
-        "description": "处理举报\n需要管理员权限；涉及匿名追溯与原文读取时需专用审计。",
+        "description": "只接受 resolved 与 dismissed：结案是单向的，重复结案返回409。结案只记录对举报的决定并写审计行，**不改动内容**——隐藏内容走 /admin/contents/{id}/visibility，这样审计才能说清管理员到底选了哪一种。状态检查与更新在同一事务内并用 SELECT … FOR UPDATE 锁行，避免两个管理员同时结案却都写一行审计。\n需要管理员权限；涉及匿名追溯与原文读取时需专用审计。",
         "tags": [
           "管理"
         ],
@@ -5958,7 +5958,7 @@
             }
           }
         },
-        "x-implementation-status": "planned",
+        "x-implementation-status": "implemented",
         "x-required-role": "admin",
         "parameters": [
           {

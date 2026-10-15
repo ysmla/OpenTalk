@@ -116,10 +116,10 @@ cd ..\scripts ; python build_openapi.py
 | 6b | 站内通知读取接口 | 已完成（`b4328b1`），[报告](verification-2026-10-15-notification-reads.md) |
 | 6c | 邮件通知 | **已完成、真实投递验证、两条缺口已补**（偏好、订阅/退订、投递逻辑、`cmd/worker`；真发一封并确认收到；并发/租约正确性与退订链接端到端各有测试） |
 | 7 | 搜索 | **已完成**（接口 + ngram 全文索引 + 结果页筛选控件，见[报告](verification-2026-10-15-search.md)） |
-| 8 | 举报与审核 | 进行中：**举报者侧**（`POST /reports`、`GET /me/reports`）与**审核**（`PATCH /admin/contents/{id}/visibility` 隐藏/恢复、`GET /admin/audit`）已完成，见[报告](verification-2026-10-15-reports.md)；**待做：管理员举报队列与结案、前端入口（举报按钮/我的举报/管理端界面）** |
+| 8 | 举报与审核 | 后端**已完成**：举报者侧（`POST /reports`、`GET /me/reports`）、审核（`PATCH /admin/contents/{id}/visibility`、`GET /admin/audit`）、管理队列与结案（`GET /admin/reports`、`PATCH /admin/reports/{id}`），见[报告](verification-2026-10-15-reports.md)；**待做：前端入口（举报按钮/我的举报/管理端界面）** |
 | 9 | 上线准备 | 未开始 |
 
-数据基线：合同 57 个操作、41 implemented / 16 planned（34 条已实现路径）、63 个模型、23 张业务表、**4 组迁移**（`migrations.Latest = 4`）；全量真实库测试 19 个包 / 119 个顶层测试 / 579 个通过事件 / 0 失败 / 0 跳过，语句覆盖率约 70%（`cmd/worker` 的语句计入分母但无测试，读数因此偏低）。
+数据基线：合同 57 个操作、43 implemented / 14 planned（36 条已实现路径）、63 个模型、23 张业务表、**4 组迁移**（`migrations.Latest = 4`）；全量真实库测试 19 个包 / 122 个顶层测试 / 582 个通过事件 / 0 失败 / 0 跳过，语句覆盖率约 70%（`cmd/worker` 的语句计入分母但无测试，读数因此偏低）。
 
 最近落地（2026-10-15，按提交顺序）：`5a5ed55` 搜索后端 → `55c6a0f` 搜索界面 → 本轮 `perf(search)` 索引优化 + 筛选控件。索引一节的要点：把两个 `MATCH` 写成 `OR` 等于没优化（实测 8.41ms，与 `LIKE` 扫描 11.4ms 接近），改成"两个索引子查询 `UNION` 后再 join"后为 **0.172ms**；单字查询走扫描回退，BOOLEAN MODE 运算符从用户输入里去掉。三个由测试抓到的自身缺陷（原始输入 vs 净化后的词、空串落进 `LIKE '%%'`）均已修复并有断言覆盖。
 
