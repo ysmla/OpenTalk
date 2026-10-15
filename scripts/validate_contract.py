@@ -36,6 +36,7 @@ ALLOWED_IMPLEMENTED={
     '/api/v1/contents/{content_id}/permissions','/api/v1/questions/{topic_id}/answers',
     '/api/v1/topics/{topic_id}/comments','/api/v1/me/notifications',
     '/api/v1/me/notifications/{notification_id}/read','/api/v1/me/notification-preferences',
+    '/api/v1/me/subscriptions/{topic_id}','/api/v1/subscriptions/unsubscribe',
 }
 assert {'/health','/ready'} <= implemented, sorted(implemented)
 undocumented=implemented-({'/health','/ready'}|ALLOWED_IMPLEMENTED)

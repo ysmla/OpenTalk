@@ -59,6 +59,12 @@ func run() error {
 	if err != nil {
 		return err
 	}
+	// The unsubscribe links carried by notification mail are signed with their own subkey, so a token that
+	// leaks cannot be turned into a session or a settings decryption.
+	unsubscribeKey, err := secretbox.Derive(cfg.AppSecret, "unsubscribe-token")
+	if err != nil {
+		return err
+	}
 
 	mux := http.NewServeMux()
 	health.Register(mux, func(ctx context.Context) error {
@@ -88,11 +94,12 @@ func run() error {
 		TrustProxy: cfg.TrustProxy,
 	})
 	content.Register(mux, content.Deps{
-		Store:    content.Store{DB: db},
-		Logger:   logger,
-		Sessions: sessions,
-		Settings: settingsStore,
-		Media:    &media.Store{Root: cfg.MediaRoot},
+		Store:          content.Store{DB: db},
+		Logger:         logger,
+		Sessions:       sessions,
+		Settings:       settingsStore,
+		Media:          &media.Store{Root: cfg.MediaRoot},
+		UnsubscribeKey: unsubscribeKey,
 	})
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) { httpapi.Fail(w, r, 404, "NOT_FOUND", "接口不存在") })
 	server := &http.Server{Addr: cfg.HTTPAddr, Handler: httpapi.Middleware(cfg.AppOrigin, logger, mux), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 15 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 1 << 20}

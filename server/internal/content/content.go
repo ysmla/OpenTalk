@@ -33,6 +33,9 @@ type Deps struct {
 	Settings *settings.Store
 	// Media stores uploaded images. When it is absent the upload and image routes are not mounted.
 	Media *media.Store
+	// UnsubscribeKey signs the unsubscribe links carried by notification mail. It is its own subkey derived
+	// from APP_SECRET, so a token that leaks cannot be reused as a session or a settings key.
+	UnsubscribeKey []byte
 }
 
 // Register mounts the public content reads and the authenticated writes. Writes go through
@@ -63,7 +66,15 @@ func Register(mux *http.ServeMux, deps Deps) {
 		// session check as the notification list.
 		mux.Handle("GET /api/v1/me/notification-preferences", auth.Require(deps.Sessions, false, http.HandlerFunc(deps.getNotificationPreferences)))
 		mux.Handle("PUT /api/v1/me/notification-preferences", auth.Require(deps.Sessions, false, http.HandlerFunc(deps.setNotificationPreferences)))
+		// Per-topic mail overrides. The unsubscribe route is mounted outside this block below: it is the one
+		// endpoint that must work from a mail link, so it cannot require a session.
+		mux.Handle("GET /api/v1/me/subscriptions/{topic_id}", auth.Require(deps.Sessions, false, http.HandlerFunc(deps.getSubscription)))
+		mux.Handle("PUT /api/v1/me/subscriptions/{topic_id}", auth.Require(deps.Sessions, false, http.HandlerFunc(deps.setSubscription)))
 	}
+	// Public, but only because the token is the credential: it names one account and one topic, and the
+	// signature is the only thing that authorises the change. POST plus the middleware's exact-Origin check
+	// keeps a mail scanner that merely follows links from unsubscribing anybody.
+	mux.HandleFunc("POST /api/v1/subscriptions/unsubscribe", deps.unsubscribeEmail)
 	if deps.Media != nil {
 		// Public: images are embedded in public content, so the route is readable without a session. The
 		// key grants nothing on its own: the handler asks the database whether this image may be shown to

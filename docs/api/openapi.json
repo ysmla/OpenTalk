@@ -4696,7 +4696,7 @@
       "get": {
         "operationId": "getSubscription",
         "summary": "读取单篇邮件设置",
-        "description": "读取单篇邮件设置",
+        "description": "仅本人可读。未设置过读作 inherit（跟随全局邮件偏好）。主题已删除或不可见时返回404：读者无法为打不开的讨论改邮件设置，而那些邮件本来也不会发出（投递前会重新检查可见性）。",
         "tags": [
           "me"
         ],
@@ -4817,7 +4817,7 @@
             }
           }
         },
-        "x-implementation-status": "planned",
+        "x-implementation-status": "implemented",
         "parameters": [
           {
             "name": "topic_id",
@@ -4833,7 +4833,7 @@
       "put": {
         "operationId": "setSubscription",
         "summary": "设置单篇邮件订阅",
-        "description": "请求topic_id必须与路径相同，覆盖全局默认。",
+        "description": "请求topic_id必须与路径相同，覆盖全局默认。只影响该主题的邮件，不影响站内通知；主题已删除或不可见时返回404。",
         "tags": [
           "me"
         ],
@@ -4955,7 +4955,7 @@
             }
           }
         },
-        "x-implementation-status": "planned",
+        "x-implementation-status": "implemented",
         "parameters": [
           {
             "name": "topic_id",
@@ -4983,7 +4983,7 @@
       "post": {
         "operationId": "unsubscribeEmail",
         "summary": "凭邮件令牌取消订阅",
-        "description": "用户打开站内退订确认页后提交，避免邮件扫描器GET误退订；不要求登录，仅校验范围受限的签名令牌和Origin。",
+        "description": "用户打开站内退订确认页后提交，避免邮件扫描器GET误退订；不要求登录，仅校验范围受限的签名令牌和Origin。令牌只命名一个账号与一个主题，因此最坏情况只能关掉它被签发时对应的那个主题的邮件；不能读取任何内容，也不改动全局邮件偏好。签名用独立子密钥，过期时间在签名覆盖的载荷内。",
         "tags": [
           "subscriptions"
         ],
@@ -5093,7 +5093,7 @@
             }
           }
         },
-        "x-implementation-status": "planned",
+        "x-implementation-status": "implemented",
         "requestBody": {
           "required": true,
           "content": {

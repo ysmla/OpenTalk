@@ -30,6 +30,7 @@ type topicEnv struct {
 	t         *testing.T
 	db        *sql.DB
 	store     Store
+	deps      Deps
 	handler   http.Handler
 	sessions  auth.Sessions
 	boardID   uint64
@@ -74,13 +75,21 @@ func newTopicEnv(t *testing.T) *topicEnv {
 
 	mux := http.NewServeMux()
 	env.mediaRoot = t.TempDir()
-	Register(mux, Deps{
-		Store:    store,
-		Logger:   slog.New(slog.NewJSONHandler(io.Discard, nil)),
-		Sessions: env.sessions,
-		Settings: &settings.Store{DB: db, Key: settingsKey},
-		Media:    &media.Store{Root: env.mediaRoot},
-	})
+	// The unsubscribe token key is derived here exactly as cmd/api derives it, so a token minted by the
+	// fixture is accepted by the mounted route and a token minted with another key is not.
+	unsubscribeKey, err := secretbox.Derive(secret, "unsubscribe-token")
+	if err != nil {
+		t.Fatal(err)
+	}
+	env.deps = Deps{
+		Store:          store,
+		Logger:         slog.New(slog.NewJSONHandler(io.Discard, nil)),
+		Sessions:       env.sessions,
+		Settings:       &settings.Store{DB: db, Key: settingsKey},
+		Media:          &media.Store{Root: env.mediaRoot},
+		UnsubscribeKey: unsubscribeKey,
+	}
+	Register(mux, env.deps)
 	env.handler = httpapi.Middleware(testOrigin, slog.New(slog.NewJSONHandler(io.Discard, nil)), mux)
 	return env
 }

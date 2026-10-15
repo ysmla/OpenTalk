@@ -96,9 +96,9 @@ op=operation('get','/media/{key}','getImage','读取受控图片',auth='public',
 op['responses']['200']['content']={'image/*':{'schema':{'type':'string','format':'binary'}}}
 operation('get','/me/notification-preferences','getNotificationPreferences','读取邮件偏好','NotificationPreferences',description='仅本人可读。未设置过时三项均为 false：邮件是选择性开启的，不替用户发明默认值，也不会向未确认的用户发信；站内通知不受这三项影响。',implemented=True)
 operation('put','/me/notification-preferences','setNotificationPreferences','设置邮件偏好','NotificationPreferences','NotificationPreferences',description='整体替换三项：缺少任一项按 422 拒绝，避免"只改一项"被静默当成"其余关掉"。未设置过的账号读取为全 false。',implemented=True)
-operation('get','/me/subscriptions/{topic_id}','getSubscription','读取单篇邮件设置','TopicSubscription')
-operation('put','/me/subscriptions/{topic_id}','setSubscription','设置单篇邮件订阅','TopicSubscription','TopicSubscription',description='请求topic_id必须与路径相同，覆盖全局默认。')
-operation('post','/subscriptions/unsubscribe','unsubscribeEmail','凭邮件令牌取消订阅',request='UnsubscribeRequest',auth='public',status='204',description='用户打开站内退订确认页后提交，避免邮件扫描器GET误退订；不要求登录，仅校验范围受限的签名令牌和Origin。')
+operation('get','/me/subscriptions/{topic_id}','getSubscription','读取单篇邮件设置','TopicSubscription',description='仅本人可读。未设置过读作 inherit（跟随全局邮件偏好）。主题已删除或不可见时返回404：读者无法为打不开的讨论改邮件设置，而那些邮件本来也不会发出（投递前会重新检查可见性）。',implemented=True)
+operation('put','/me/subscriptions/{topic_id}','setSubscription','设置单篇邮件订阅','TopicSubscription','TopicSubscription',description='请求topic_id必须与路径相同，覆盖全局默认。只影响该主题的邮件，不影响站内通知；主题已删除或不可见时返回404。',implemented=True)
+operation('post','/subscriptions/unsubscribe','unsubscribeEmail','凭邮件令牌取消订阅',request='UnsubscribeRequest',auth='public',status='204',description='用户打开站内退订确认页后提交，避免邮件扫描器GET误退订；不要求登录，仅校验范围受限的签名令牌和Origin。令牌只命名一个账号与一个主题，因此最坏情况只能关掉它被签发时对应的那个主题的邮件；不能读取任何内容，也不改动全局邮件偏好。签名用独立子密钥，过期时间在签名覆盖的载荷内。',implemented=True)
 operation('get','/me/notifications','listNotifications','读取站内通知','NotificationPage',params=pagination,description='仅接收者本人可读。只返回安全摘要与内容定位：不返回作者内部ID、不返回原文快照。actor按内容当前可见性与匿名规则在读取时附加，内容已删除或不可见时省略actor且摘要只说该内容不可见；站内通知是接收者自己的历史，不随删除消失。游标按id倒序翻页，不携带内部用户ID。',implemented=True)
 operation('put','/me/notifications/{notification_id}/read','readNotification','标记通知已读',status='204',description='仅接收者本人可操作；重复标记按幂等处理返回204，他人的或不存在的通知一律404，不用于确认他人通知是否存在。',implemented=True)
 operation('post','/reports','createReport','举报内容','MyReport','CreateReportRequest',status='201')
