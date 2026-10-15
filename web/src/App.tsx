@@ -12,6 +12,7 @@ import { RegisterView } from './views/RegisterView';
 import { ResetPasswordView } from './views/ResetPasswordView';
 import { AdminModerationView } from './views/AdminModerationView';
 import { MyReportsView } from './views/MyReportsView';
+import { NotificationsView } from './views/NotificationsView';
 import { SearchView } from './views/SearchView';
 import { TopicDetailView } from './views/TopicDetailView';
 import { TopicEditorView, type EditorSaveResult } from './views/TopicEditorView';
@@ -176,6 +177,12 @@ export function App() {
    />;
   case 'me-reports':
    return <MyReportsView
+    sessionReady={sessionReady}
+    signedIn={user !== undefined}
+    onUnauthenticated={handleUnauthenticated}
+   />;
+  case 'me-notifications':
+   return <NotificationsView
     sessionReady={sessionReady}
     signedIn={user !== undefined}
     onUnauthenticated={handleUnauthenticated}

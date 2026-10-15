@@ -12,6 +12,7 @@ export type RouteLocation =
  | { name: 'reset' }
  | { name: 'me' }
  | { name: 'me-reports' }
+ | { name: 'me-notifications' }
  | { name: 'admin' }
  | { name: 'admin-moderation' }
  | { name: 'topics' }
@@ -25,7 +26,7 @@ export type RouteLocation =
 export type RouteName = RouteLocation['name'];
 
 /** The nine legacy names plus the topic list, all of which carry no argument. */
-export type Route = 'home' | 'login' | 'register' | 'reset' | 'me' | 'me-reports' | 'admin' | 'admin-moderation' | 'topics';
+export type Route = 'home' | 'login' | 'register' | 'reset' | 'me' | 'me-reports' | 'me-notifications' | 'admin' | 'admin-moderation' | 'topics';
 
 const STATIC_ROUTES: Record<string, Route> = {
  login: 'login',
@@ -34,6 +35,8 @@ const STATIC_ROUTES: Record<string, Route> = {
  me: 'me',
  // The reader's own reports are a separate screen rather than a tab of the profile.
  'me/reports': 'me-reports',
+ // In-site notifications have their own screen too: they are a feed, not a setting.
+ 'me/notifications': 'me-notifications',
  home: 'home',
  admin: 'admin',
  // Aliases for the home screen's topic list.
@@ -136,6 +139,7 @@ export function routeHref(location: RouteLocation): string {
   case 'topics': return '#/topics';
   case 'me': return '#/me';
   case 'me-reports': return '#/me/reports';
+  case 'me-notifications': return '#/me/notifications';
   case 'admin-moderation': return '#/admin/moderation';
   case 'new':
    return location.boardId ? `#/new?board_id=${encodeURIComponent(location.boardId)}` : '#/new';

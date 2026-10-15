@@ -130,6 +130,13 @@ export function ProfileView({ user, onUserChange, onUnauthenticated }: ProfileVi
     <a href="#/admin/moderation">审核与举报</a>
    </nav>
   </section>}
+  <section aria-labelledby="my-notifications-heading">
+   <h2 id="my-notifications-heading">通知</h2>
+   <p>别人回复你、回答你的提问或你的举报有结果时的站内通知；与邮件通知是两件事。</p>
+   <nav className="links" aria-label="通知">
+    <a href="#/me/notifications">查看通知</a>
+   </nav>
+  </section>
   <section aria-labelledby="my-reports-heading">
    <h2 id="my-reports-heading">我的举报</h2>
    <p>你提交过的举报与处理结果；举报不会自动隐藏或删除内容。</p>
