@@ -166,6 +166,8 @@ export function App() {
   case 'search':
    return <SearchView
     q={location.q}
+    boardId={location.boardId}
+    tagId={location.tagId}
     user={user}
     sessionReady={sessionReady}
     onUnauthenticated={handleUnauthenticated}

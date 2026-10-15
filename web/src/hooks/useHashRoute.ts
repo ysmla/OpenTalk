@@ -17,7 +17,7 @@ export type RouteLocation =
  | { name: 'tag'; id: string }
  | { name: 'topic'; id: string }
  | { name: 'new'; boardId?: string }
- | { name: 'search'; q?: string }
+ | { name: 'search'; q?: string; boardId?: string; tagId?: string }
  | { name: 'edit'; id: string };
 
 export type RouteName = RouteLocation['name'];
@@ -87,7 +87,15 @@ export function parseHash(hash: string): RouteLocation {
  // never an identity or a token: it is the reader's own words.
  if (segments[0] === 'search') {
   const term = (query.get('q') ?? '').trim();
-  return term === '' ? { name: 'search' } : { name: 'search', q: term };
+  // The filters are optional and carried in the same hash, so a narrowed result page is still one link.
+  const boardId = (query.get('board_id') ?? '').trim();
+  const tagId = (query.get('tag_id') ?? '').trim();
+  return {
+   name: 'search',
+   ...(term === '' ? {} : { q: term }),
+   ...(boardId === '' ? {} : { boardId }),
+   ...(tagId === '' ? {} : { tagId }),
+  };
  }
  const name = PARAMETERISED_ROUTES[segments[0]];
  const id = segments[1];
@@ -122,8 +130,15 @@ export function routeHref(location: RouteLocation): string {
   case 'topics': return '#/topics';
   case 'new':
    return location.boardId ? `#/new?board_id=${encodeURIComponent(location.boardId)}` : '#/new';
-  case 'search':
-   return location.q ? `#/search?q=${encodeURIComponent(location.q)}` : '#/search';
+  case 'search': {
+   // Filters keep their place in the link, so the shared URL reproduces the same narrowed page.
+   const search = new URLSearchParams();
+   if (location.q) search.set('q', location.q);
+   if (location.boardId) search.set('board_id', location.boardId);
+   if (location.tagId) search.set('tag_id', location.tagId);
+   const query = search.toString();
+   return query === '' ? '#/search' : `#/search?${query}`;
+  }
   case 'board': return `#/board/${encodeURIComponent(location.id)}`;
   case 'tag': return `#/tag/${encodeURIComponent(location.id)}`;
   case 'topic': return `#/topic/${encodeURIComponent(location.id)}`;

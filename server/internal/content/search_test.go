@@ -228,6 +228,46 @@ func TestSearchFiltersAndBoundaries(t *testing.T) {
 	}
 }
 
+func TestSearchHandlesShortAndOperatorQueries(t *testing.T) {
+	env := newTopicEnv(t)
+	// A single character is shorter than one ngram token, so the full-text index cannot answer it: this
+	// asserts the scan fallback is wired, because without it a one-character search would silently return
+	// nothing.
+	short := env.topic(env.boardID, "短词测试")
+	ids := searchIDs(t, env.search("试"))
+	if len(ids) == 0 {
+		t.Fatal("a one-character query returned nothing: the fallback for sub-token queries is not in use")
+	}
+	found := false
+	for _, id := range ids {
+		if id == itoa(short) {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("the one-character query missed %s: %v", itoa(short), ids)
+	}
+
+	// Boolean operators in the reader's words are stripped, not obeyed: "-试" must not mean "exclude 试".
+	plain := searchIDs(t, env.search("试"))
+	minus := searchIDs(t, env.search("-试"))
+	if len(minus) != len(plain) {
+		t.Fatalf("a leading minus changed the result set: %v versus %v", minus, plain)
+	}
+	// A query made only of operators has nothing to search for: no matches, and no error either.
+	onlyOperators := env.get("/api/v1/search?q=" + urlEncode("+-*"))
+	expectStatus(t, onlyOperators, 200)
+	if ids := searchIDs(t, onlyOperators); len(ids) != 0 {
+		t.Fatalf("an operators-only query matched %v", ids)
+	}
+	// The same characters are inert in a longer query too, which is the case the ngram path handles.
+	quoted := env.get("/api/v1/search?q=" + urlEncode(`"试"`))
+	expectStatus(t, quoted, 200)
+	if ids := searchIDs(t, quoted); len(ids) == 0 {
+		t.Fatal("a quoted single character returned nothing")
+	}
+}
+
 func TestSearchPaginationIsStable(t *testing.T) {
 	env := newTopicEnv(t)
 	const token = "zzpagetoken"

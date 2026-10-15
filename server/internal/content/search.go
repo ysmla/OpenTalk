@@ -32,6 +32,27 @@ import (
 // expensive for every row, so it is refused rather than truncated.
 const searchMaxQuery = 100
 
+// ngramTokenSize mirrors MySQL's `ngram_token_size` (2 by default): a query shorter than one token produces
+// no token at all, so the full-text index cannot answer it and the scan path is used instead. One-character
+// searches therefore stay correct at the old cost instead of silently returning nothing.
+const ngramTokenSize = 2
+
+// booleanOperators are the characters `IN BOOLEAN MODE` gives meaning to. They are removed from user input
+// so a query cannot become a different query: "-词" must not read as "exclude 词", nor "*" as a wildcard.
+// Stripping is enough because the remaining term is then wrapped in quotes as a phrase.
+const booleanOperators = `+-<>()~*"@`
+
+// sanitizeBooleanTerm removes the boolean operators, leaving the words the reader actually typed.
+func sanitizeBooleanTerm(query string) string {
+	cleaned := strings.Map(func(character rune) rune {
+		if strings.ContainsRune(booleanOperators, character) {
+			return -1
+		}
+		return character
+	}, query)
+	return strings.TrimSpace(cleaned)
+}
+
 // searchFilter is the validated search input.
 type searchFilter struct {
 	Query   string
@@ -59,15 +80,51 @@ func (f searchFilter) cursorScope() string {
 // The resume id is the last row *examined*, not the last row returned: a row the visibility rule refuses
 // still has to move the cursor, or a page with nothing visible on it could never be left behind.
 func (s Store) SearchContent(ctx context.Context, filter searchFilter, page pageRequest) ([]uint64, bool, uint64, error) {
-	pattern := "%" + escapeLike(filter.Query) + "%"
-	// Match the body for every kind, and the title where there is one: a topic is found by its title as
-	// well as its text, which is what a reader expects from a forum search.
 	conditions := []string{
 		`c.deleted_at IS NULL`,
 		`c.moderation_status='visible'`,
-		`(c.body_md LIKE ? ESCAPE '\\' OR (t.title IS NOT NULL AND t.title LIKE ? ESCAPE '\\'))`,
 	}
-	args := []any{pattern, pattern}
+	args := []any{}
+	// The joins are shared by both shapes: the filters below and the reader above them both need to reach the
+	// root topic of a row.
+	const joins = `
+LEFT JOIN topics t ON t.content_id=c.id
+LEFT JOIN answers a ON a.content_id=c.id
+LEFT JOIN comments cm ON cm.content_id=c.id
+LEFT JOIN topics rt ON rt.content_id=COALESCE(t.content_id,a.question_id,cm.topic_id)`
+
+	from := `FROM contents c` + joins
+	term := sanitizeBooleanTerm(filter.Query)
+	// Nothing searchable survived sanitising (the query was only operators). Answering "no matches" is right,
+	// and checking it before the branch below matters: an empty term would otherwise become the pattern `%%`,
+	// which matches everything.
+	if term == "" {
+		return nil, false, 0, nil
+	}
+	// The decision is made on the sanitised term, not on what was typed: "-词" is one word after the operator
+	// is stripped, so it must take the scan path rather than be sent to an index that cannot tokenise it.
+	if utf8.RuneCountInString(term) >= ngramTokenSize {
+		// The candidates come from two index lookups, unioned, and only then joined back to `contents`.
+		//
+		// This shape is deliberate and measured: writing the same two MATCHes as an OR in one WHERE clause
+		// prevents either index from being used at all (the planner falls back to a scan), while the union of
+		// two index-backed subqueries reads only the matching rows. The phrase form (`"term"`) is what makes an
+		// ngram match behave like the substring search it replaces.
+		phrase := `"` + term + `"`
+		from = `FROM (
+ SELECT c0.id AS id FROM contents c0 WHERE MATCH(c0.body_md) AGAINST (? IN BOOLEAN MODE)
+ UNION
+ SELECT t0.content_id AS id FROM topics t0 WHERE MATCH(t0.title) AGAINST (? IN BOOLEAN MODE)
+) m
+JOIN contents c ON c.id=m.id` + joins
+		args = append(args, phrase, phrase)
+	} else {
+		// Shorter than one ngram token, so there is no index to use: match the body for every kind and the
+		// title where there is one, which is what a reader expects from a forum search.
+		pattern := "%" + escapeLike(term) + "%"
+		conditions = append(conditions, `(c.body_md LIKE ? ESCAPE '\\' OR (t.title IS NOT NULL AND t.title LIKE ? ESCAPE '\\'))`)
+		args = append(args, pattern, pattern)
+	}
 	if filter.BoardID != 0 {
 		conditions = append(conditions, `rt.board_id=?`)
 		args = append(args, filter.BoardID)
@@ -80,13 +137,7 @@ func (s Store) SearchContent(ctx context.Context, filter searchFilter, page page
 		conditions = append(conditions, `c.id<?`)
 		args = append(args, page.After[0])
 	}
-	query := `
-SELECT c.id
-FROM contents c
-LEFT JOIN topics t ON t.content_id=c.id
-LEFT JOIN answers a ON a.content_id=c.id
-LEFT JOIN comments cm ON cm.content_id=c.id
-LEFT JOIN topics rt ON rt.content_id=COALESCE(t.content_id,a.question_id,cm.topic_id)
+	query := `SELECT c.id ` + from + `
 WHERE ` + strings.Join(conditions, ` AND `) + `
 ORDER BY c.id DESC LIMIT ?`
 	args = append(args, page.Limit+1)

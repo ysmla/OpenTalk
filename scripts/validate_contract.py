@@ -41,7 +41,7 @@ ALLOWED_IMPLEMENTED={
 assert {'/health','/ready'} <= implemented, sorted(implemented)
 undocumented=implemented-({'/health','/ready'}|ALLOWED_IMPLEMENTED)
 assert not undocumented, f'implemented without coverage in this validator: {sorted(undocumented)}'
-MIGRATIONS=[('000001_initial',22),('000002_account_settings',1),('000003_media_settings',0)]
+MIGRATIONS=[('000001_initial',22),('000002_account_settings',1),('000003_media_settings',0),('000004_search_indexes',0)]
 known=set()
 for name,expected in MIGRATIONS:
     up=(ROOT/f'server/migrations/{name}.up.sql').read_text(encoding='utf-8')
