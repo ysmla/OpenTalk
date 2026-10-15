@@ -109,6 +109,7 @@ export function TopicsView({ user, sessionReady, boardId, tagId, onUnauthenticat
     </select>
    </div>
    <div className="actions">
+    <a className="secondary" href="#/search">搜索</a>
     {user
      ? <a href={boardId ? `#/new?board_id=${encodeURIComponent(boardId)}` : '#/new'}>发帖 / 提问</a>
      : <button

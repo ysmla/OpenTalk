@@ -99,3 +99,10 @@ ul.replies { margin: 12px 0 0 24px; padding-left: 16px; border-left: 2px solid #
 .markdown table { border-collapse: collapse; }
 .markdown th, .markdown td { border: 1px solid #bfcac3; padding: 6px 10px; }
 .markdown img { max-width: 100%; border-radius: 6px; }
+
+/* 搜索结果条目：一条结果可能是帖子、回答或评论，因此标题层级比列表页浅，
+   并用分隔线把混在一起的结果分开。 */
+.result { padding: 12px 0; border-bottom: 1px solid #e3e1d8; }
+.result h2 { font-size: 1.05em; line-height: 1.4; margin: 4px 0 6px; }
+.result .markdown { margin-top: 6px; }
+.result .markdown > :first-child { margin-top: 0; }

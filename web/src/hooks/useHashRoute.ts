@@ -17,6 +17,7 @@ export type RouteLocation =
  | { name: 'tag'; id: string }
  | { name: 'topic'; id: string }
  | { name: 'new'; boardId?: string }
+ | { name: 'search'; q?: string }
  | { name: 'edit'; id: string };
 
 export type RouteName = RouteLocation['name'];
@@ -82,6 +83,12 @@ export function parseHash(hash: string): RouteLocation {
   const boardId = (segments[1] ?? query.get('board_id') ?? '').trim();
   return boardId ? { name: 'new', boardId } : { name: 'new' };
  }
+ // Search keeps its term in the query string so a result page can be linked and reloaded. The term is
+ // never an identity or a token: it is the reader's own words.
+ if (segments[0] === 'search') {
+  const term = (query.get('q') ?? '').trim();
+  return term === '' ? { name: 'search' } : { name: 'search', q: term };
+ }
  const name = PARAMETERISED_ROUTES[segments[0]];
  const id = segments[1];
  if (name && id) {
@@ -115,6 +122,8 @@ export function routeHref(location: RouteLocation): string {
   case 'topics': return '#/topics';
   case 'new':
    return location.boardId ? `#/new?board_id=${encodeURIComponent(location.boardId)}` : '#/new';
+  case 'search':
+   return location.q ? `#/search?q=${encodeURIComponent(location.q)}` : '#/search';
   case 'board': return `#/board/${encodeURIComponent(location.id)}`;
   case 'tag': return `#/tag/${encodeURIComponent(location.id)}`;
   case 'topic': return `#/topic/${encodeURIComponent(location.id)}`;

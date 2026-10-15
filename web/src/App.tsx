@@ -10,6 +10,7 @@ import { LoginView } from './views/LoginView';
 import { ProfileView } from './views/ProfileView';
 import { RegisterView } from './views/RegisterView';
 import { ResetPasswordView } from './views/ResetPasswordView';
+import { SearchView } from './views/SearchView';
 import { TopicDetailView } from './views/TopicDetailView';
 import { TopicEditorView, type EditorSaveResult } from './views/TopicEditorView';
 import { TopicsView } from './views/TopicsView';
@@ -160,6 +161,13 @@ export function App() {
     user={user}
     sessionReady={sessionReady}
     onSaved={result => handleSaved(result, location.id)}
+    onUnauthenticated={handleUnauthenticated}
+   />;
+  case 'search':
+   return <SearchView
+    q={location.q}
+    user={user}
+    sessionReady={sessionReady}
     onUnauthenticated={handleUnauthenticated}
    />;
   default:

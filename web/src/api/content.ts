@@ -57,8 +57,15 @@ type TopicQuery = {
  sort?: TopicSort;
 };
 
-/** Query strings skip unset values; an empty board_id must not become `board_id=`. */
-function queryString(params: Record<string, string | undefined>): string {
+/** Search parameters. `q` is required by the contract; the server refuses an empty one. */
+export type SearchQuery = {
+ q: string;
+ cursor?: string;
+ board_id?: string;
+ tag_id?: string;
+};
+
+/** Query strings skip unset values; an empty board_id must not become `board_id=`. */function queryString(params: Record<string, string | undefined>): string {
  const search = new URLSearchParams();
  for (const [key, value] of Object.entries(params)) {
   if (value !== undefined && value !== '') search.set(key, value);
@@ -77,6 +84,17 @@ export function listTopics(query: TopicQuery, signal?: AbortSignal) {
   sort: query.sort,
  });
  return request<ContentPage>(`/api/v1/topics${params}`, { signal });
+}
+
+/** `GET /api/v1/search` — 公开搜索；q 必填，服务端按内容 id 倒序返回。 */
+export function searchContents(query: SearchQuery, signal?: AbortSignal) {
+ const params = queryString({
+  q: query.q,
+  cursor: query.cursor,
+  board_id: query.board_id,
+  tag_id: query.tag_id,
+ });
+ return request<ContentPage>(`/api/v1/search${params}`, { signal });
 }
 
 /** `GET /api/v1/contents/{content_id}` — 主题、回答或评论，也可能是删除占位。 */
