@@ -59,6 +59,10 @@ func Register(mux *http.ServeMux, deps Deps) {
 		// own inbox, and it goes through the same session check as the writes.
 		mux.Handle("GET /api/v1/me/notifications", auth.Require(deps.Sessions, false, http.HandlerFunc(deps.listNotifications)))
 		mux.Handle("PUT /api/v1/me/notifications/{notification_id}/read", auth.Require(deps.Sessions, false, http.HandlerFunc(deps.readNotification)))
+		// Notification email preferences: read and written by their owner only, so they sit behind the same
+		// session check as the notification list.
+		mux.Handle("GET /api/v1/me/notification-preferences", auth.Require(deps.Sessions, false, http.HandlerFunc(deps.getNotificationPreferences)))
+		mux.Handle("PUT /api/v1/me/notification-preferences", auth.Require(deps.Sessions, false, http.HandlerFunc(deps.setNotificationPreferences)))
 	}
 	if deps.Media != nil {
 		// Public: images are embedded in public content, so the route is readable without a session. The

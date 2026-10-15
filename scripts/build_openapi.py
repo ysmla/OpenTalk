@@ -94,8 +94,8 @@ op=operation('post','/attachments','uploadImage','上传图片','Attachment',sta
 op['requestBody']={'required':True,'content':{'multipart/form-data':{'schema':{'type':'object','additionalProperties':False,'required':['file'],'properties':{'file':{'type':'string','format':'binary'}}}}}}
 op=operation('get','/media/{key}','getImage','读取受控图片',auth='public',description='检查可见关联或上传者权限，匿名地址不含身份；不直接暴露磁盘目录。',implemented=True)
 op['responses']['200']['content']={'image/*':{'schema':{'type':'string','format':'binary'}}}
-operation('get','/me/notification-preferences','getNotificationPreferences','读取邮件偏好','NotificationPreferences')
-operation('put','/me/notification-preferences','setNotificationPreferences','设置邮件偏好','NotificationPreferences','NotificationPreferences')
+operation('get','/me/notification-preferences','getNotificationPreferences','读取邮件偏好','NotificationPreferences',description='仅本人可读。未设置过时三项均为 false：邮件是选择性开启的，不替用户发明默认值，也不会向未确认的用户发信；站内通知不受这三项影响。',implemented=True)
+operation('put','/me/notification-preferences','setNotificationPreferences','设置邮件偏好','NotificationPreferences','NotificationPreferences',description='整体替换三项：缺少任一项按 422 拒绝，避免"只改一项"被静默当成"其余关掉"。未设置过的账号读取为全 false。',implemented=True)
 operation('get','/me/subscriptions/{topic_id}','getSubscription','读取单篇邮件设置','TopicSubscription')
 operation('put','/me/subscriptions/{topic_id}','setSubscription','设置单篇邮件订阅','TopicSubscription','TopicSubscription',description='请求topic_id必须与路径相同，覆盖全局默认。')
 operation('post','/subscriptions/unsubscribe','unsubscribeEmail','凭邮件令牌取消订阅',request='UnsubscribeRequest',auth='public',status='204',description='用户打开站内退订确认页后提交，避免邮件扫描器GET误退订；不要求登录，仅校验范围受限的签名令牌和Origin。')

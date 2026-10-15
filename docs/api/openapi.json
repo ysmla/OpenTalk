@@ -4431,7 +4431,7 @@
       "get": {
         "operationId": "getNotificationPreferences",
         "summary": "读取邮件偏好",
-        "description": "读取邮件偏好",
+        "description": "仅本人可读。未设置过时三项均为 false：邮件是选择性开启的，不替用户发明默认值，也不会向未确认的用户发信；站内通知不受这三项影响。",
         "tags": [
           "me"
         ],
@@ -4552,12 +4552,12 @@
             }
           }
         },
-        "x-implementation-status": "planned"
+        "x-implementation-status": "implemented"
       },
       "put": {
         "operationId": "setNotificationPreferences",
         "summary": "设置邮件偏好",
-        "description": "设置邮件偏好",
+        "description": "整体替换三项：缺少任一项按 422 拒绝，避免\"只改一项\"被静默当成\"其余关掉\"。未设置过的账号读取为全 false。",
         "tags": [
           "me"
         ],
@@ -4679,7 +4679,7 @@
             }
           }
         },
-        "x-implementation-status": "planned",
+        "x-implementation-status": "implemented",
         "requestBody": {
           "required": true,
           "content": {
