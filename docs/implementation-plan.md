@@ -169,7 +169,7 @@ cd ..\scripts ; python build_openapi.py
 | **B4** | `POST/PUT /admin/boards`、`POST/PUT /admin/tags`、`PATCH /admin/topics/{topic_id}` | **已完成**（[报告](verification-2026-10-15-structure.md)）：有主题后板块类型锁定、主题只能移到同类型板块、标签按规范化名去重、每次变更同事务写审计 |
 | **B5** | 管理员删除他人内容（`can_delete` 对管理员）、`POST /admin/deleted-archives/read`、`POST /admin/anonymous-traces` | **已完成**（[报告](verification-2026-10-15-reveal.md)）：两个揭示类操作都强制原因并先写审计、归档按时间窗判断（过期 410 且不泄露原文）、追溯响应带 audit_id；管理员删除写归档 `deleted_by` + 审计行 |
 | **B6** | 上述管理能力的前端界面整合（`#/admin/*`）与浏览器走查 | 界面最后做，避免接口还在变时反复改 |
-| 收尾 | 第 9 项上线准备：部署、TLS、备份恢复演练、端到端验收 | 上线前最后一步 |
+| 收尾 | 第 9 项上线准备：部署、TLS、备份恢复演练、端到端验收 | **进行中**：已写 [部署与运维手册](deployment.md)（构建、迁移、进程与探针、TLS 与 `TRUST_PROXY`、备份恢复、回滚、上线后要盯的指标），并**真跑过一次备份恢复演练**（[报告](verification-2026-10-15-backup-restore-drill.md)）：24 张表、16 张关键表行数一致、迁移版本保留，恢复库可被应用直接使用（`/ready=200`）。**待做**：端到端验收脚本（含 B6c 未走查的三项）、真实服务器上的代理与 TLS 验证、恢复耗时测量 |
 
 贯穿各批的不变量（不得因赶进度而放宽）：匿名内容不得经任何新接口泄露内部 ID、公开 ID、昵称或头像；删除必须立即影响待发通知；任何管理动作都要留审计且不改内容正文；每批结束都要更新进度快照与数据基线。
 
