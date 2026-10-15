@@ -99,6 +99,32 @@ cd ..\scripts ; python build_openapi.py
 - 集成测试一律打真实 MySQL 与 Redis，不用 mock；"解析检查通过"从不当作"数据库执行成功"。历史上有真 bug（`topics` 表没有 `author_id` 列、归档 INSERT 占位符错位导致时间值绑进整数位）只有真实库能发现。
 - 前端子代理的 mock 浏览器验证**不算**真实接口验证，报告里都单独标注过。
 
+## 下一步（按优先级，2026-10-15 落盘）
+
+内容闭环的前后端读写两侧都已实现，前端也已在真实浏览器上走查过一轮。下面这份清单是**按顺序执行**的待办，每条都写清现状、理由与验收方式，不按"文档写完了"当作完成。
+
+1. **回答与评论级的编辑/删除入口**（进行中）
+   现状：详情页只有主题级入口；接口本身支持对任意 `content_id` 的 `PATCH`/`DELETE`，`#/edit/{id}` 也能编辑非主题内容。
+   理由：作者无法在界面上管理自己的回答与评论，这是当前最明显的功能缺口。
+   方向：不逐条请求 `GET /contents/{id}/permissions`（一页会变成几十次请求）。改为在客户端推导"这条是不是我的"：具名内容比较 `author.user.public_id` 与本人 `profile.public_id`；匿名内容只有在**本人是该匿名主题作者**（`force_anonymous_comment=true`）且作者显示为"楼主"时才算自己的。这样没有假阳性（不会显示服务端必然拒绝的按钮），匿名参与者的 `匿名#N` 内容会保守地不显示入口。
+   验收：浏览器里以作者与非作者两种身份打开同一主题，确认按钮出现/消失正确，编辑能保存，删除有级联提示且删除后列表刷新；服务端仍必须重新鉴权。
+
+2. **评论分页与展开回复**：接口的 `parent_comment_id` 已就绪但前端未接；需要"加载更多评论"与展开某串根时单独拉取其全部回复。
+3. **标签 chip 做成链接**：`#/tag/{id}` 路由已存在，列表里的标签尚未做成链接。
+4. **评论支持配图**：接口接受 `attachment_ids`，界面只给主题与回答接了上传器。
+5. **列表显示回答/评论数量**：合同没有计数字段，需要先扩合同（`ContentPage`/主题模型加计数）。
+6. **通知与 outbox**（阶段 5）：完全未实现，`requirements` 42 的"删除时立即作废待发送通知"因此没有落实。
+7. **搜索**（阶段 5）：`GET /api/v1/search` 仍 planned，`smoke-local.ps1` 用它作"未实现路由必须 404"的探针，实现后需要换探针。
+8. **举报与审核界面**（阶段 6）：隐藏/恢复目前只能由数据库写入；管理员删除他人内容也未实现（权限端点据此对管理员返回 `can_delete=false`）。
+9. **阶段 7 上线准备**：部署脚本、TLS、备份恢复、SMTP 联调、端到端验收。`TRUST_PROXY` 必须保持 false 直到有反向代理覆盖 `X-Forwarded-For`。
+
+### 手头环境（下次接着做时先看这段）
+
+- 开发用 MySQL 与 Redis 容器是 `opentalk-dev-mysql-1`、`opentalk-dev-redis-1`（compose 没有 restart 策略，**Docker Desktop 重启后必须 `docker compose up -d`**；本轮的 Docker Desktop 曾停止并被重新拉起）。
+- 集成测试入口：`scripts/test-integration.ps1`（自己从容器读凭证，另起临时 Redis）。
+- 浏览器走查入口：`scripts/smoke-local.ps1` 启停 API 与 Vite；要长时间保留服务时用 `.cache/browser-serve.ps1`，夹具库与账号见 [内容侧前端浏览器走查](verification-2026-10-15-content-frontend-browser.md)。夹具库 `opentalk_browser` 是刻意留下供复查的，删除即可：`DROP DATABASE opentalk_browser`。
+- 走查截图在本机 `.cache/browser-walkthrough/`（已 gitignore）。
+
 ## 后续确认方式
 
 对影响身份隐私、数据保留、访问权限或用户流程的歧义，先确认再实施；常规代码组织与可逆实现选择由开发过程决定并记录。每阶段按需求验收，不把文档完成视为功能完成。
