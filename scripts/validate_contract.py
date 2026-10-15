@@ -34,7 +34,8 @@ ALLOWED_IMPLEMENTED={
     '/api/v1/answers','/api/v1/comments','/api/v1/questions/{topic_id}/resolution',
     '/api/v1/contents/{content_id}','/api/v1/attachments','/media/{key}','/api/v1/tags',
     '/api/v1/contents/{content_id}/permissions','/api/v1/questions/{topic_id}/answers',
-    '/api/v1/topics/{topic_id}/comments',
+    '/api/v1/topics/{topic_id}/comments','/api/v1/me/notifications',
+    '/api/v1/me/notifications/{notification_id}/read',
 }
 assert {'/health','/ready'} <= implemented, sorted(implemented)
 undocumented=implemented-({'/health','/ready'}|ALLOWED_IMPLEMENTED)

@@ -118,8 +118,10 @@ cd ..\scripts ; python build_openapi.py
 6. **通知与 outbox**（阶段 5，拆成三片推进）
    - **6a 站内通知与 outbox 写入**（已完成 2026-10-15，见 [验证报告](verification-2026-10-15-notifications-outbox.md)）
      内容提交时在同一事务里写站内通知与 outbox 事件；通知对象只取被直接回应的那一层（回答问题→提问者，评论主题→主题作者，评论回答→该回答作者，回复评论→被回复评论作者），自己的操作不通知自己，事件键由内容与接收者推导且唯一所以重试幂等；删除时在同一事务里删掉 `pending` 的 outbox 行、取消 `pending` 的 `email_deliveries`，已租用（`processing`）的不动（worker 发送前会重新检查可见性），站内通知行保留（正文从未复制进去，读侧按当前可见性渲染）。本片不新增接口操作，未改合同。
-   - **6b 站内通知的读取接口**：`GET /me/notifications`、`PUT /me/notifications/{id}/read`，以及读取时的可见性复查（内容不可见时不带作者、不泄露匿名身份）。需要把这两个操作在合同里标为 implemented。
-   - **6c 邮件投递 worker 与偏好/订阅/退订接口**：`GET/PUT /me/notification-preferences`、`GET/PUT /me/subscriptions/{topic_id}`、`POST /subscriptions/unsubscribe`，以及独立 worker 的租约、重试与发送前可见性检查。**开工前需要先确认产品参数**：需求的「通知」一节明确写着 SMTP 服务商与发信域名、通知邮件自身的发送频率与合并窗口「在实现通知邮件前确认」。这些参数没定之前不实现邮件发送，避免替用户做产品决定。
+   - **6b 站内通知的读取接口**（已完成 2026-10-15）
+     已实现 `GET /me/notifications`（仅接收者本人可读，按 id 倒序、游标翻页且游标不携带内部用户 ID）与 `PUT /me/notifications/{id}/read`（重复标记幂等，他人的或不存在的通知一律 404）。读取时按内容的**当前**可见性附加 actor：不可见则整条不附作者、摘要只说"该内容已被删除或不可见"；可见则按与其它读取相同的匿名规则渲染（匿名楼主显示"楼主"、其他匿名参与者显示"匿名#N"）。站内通知行不存正文，所以删除或隐藏之后不会从列表里泄出正文。合同把这两个操作标为 implemented（现为 31 implemented / 26 planned，26 条已实现路径）。
+   - **6c 邮件投递 worker 与偏好/订阅/退订接口**（参数已确认 2026-10-15，可开工）
+     参数：复用现有阿里云 SMTP 同一发信账号；同一主题 10 分钟内的事件合并为一封；每收件人每小时最多 10 封。待实现：`GET/PUT /me/notification-preferences`、`GET/PUT /me/subscriptions/{topic_id}`、`POST /subscriptions/unsubscribe`，以及独立 worker 的租约、重试与**发送前**可见性/身份/订阅复查。站内通知不受邮件开关影响。
 
 7. **搜索**（阶段 5）：`GET /api/v1/search` 仍 planned，`smoke-local.ps1` 用它作"未实现路由必须 404"的探针，实现后需要换探针。
 8. **举报与审核界面**（阶段 6）：隐藏/恢复目前只能由数据库写入；管理员删除他人内容也未实现（权限端点据此对管理员返回 `can_delete=false`）。

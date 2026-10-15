@@ -5110,7 +5110,7 @@
       "get": {
         "operationId": "listNotifications",
         "summary": "读取站内通知",
-        "description": "读取站内通知",
+        "description": "仅接收者本人可读。只返回安全摘要与内容定位：不返回作者内部ID、不返回原文快照。actor按内容当前可见性与匿名规则在读取时附加，内容已删除或不可见时省略actor且摘要只说该内容不可见；站内通知是接收者自己的历史，不随删除消失。游标按id倒序翻页，不携带内部用户ID。",
         "tags": [
           "me"
         ],
@@ -5231,7 +5231,7 @@
             }
           }
         },
-        "x-implementation-status": "planned",
+        "x-implementation-status": "implemented",
         "parameters": [
           {
             "name": "cursor",
@@ -5261,7 +5261,7 @@
       "put": {
         "operationId": "readNotification",
         "summary": "标记通知已读",
-        "description": "标记通知已读",
+        "description": "仅接收者本人可操作；重复标记按幂等处理返回204，他人的或不存在的通知一律404，不用于确认他人通知是否存在。",
         "tags": [
           "me"
         ],
@@ -5376,7 +5376,7 @@
             }
           }
         },
-        "x-implementation-status": "planned",
+        "x-implementation-status": "implemented",
         "parameters": [
           {
             "name": "notification_id",

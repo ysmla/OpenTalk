@@ -40,6 +40,28 @@ func eventKey(eventType string, contentID, recipientID uint64) string {
 	return eventType + ":" + strconv.FormatUint(contentID, 10) + ":u" + strconv.FormatUint(recipientID, 10)
 }
 
+// notificationSummary is the display text of an in-site notification, and it is a function of the event
+// type alone.
+//
+// That is deliberate. Nothing about the content's text is stored with the notification, so nothing that
+// is later hidden or deleted can leak through a list row written before the change; the actor is attached
+// at read time, under the same anonymity rules as every other read. The wording also never names the
+// actor, so an anonymous answer stays untraceable through the notification that announced it.
+func notificationSummary(eventType string) string {
+	switch eventType {
+	case eventNewAnswer:
+		return "你的问题有了新的回答"
+	case eventNewReply:
+		return "你的评论收到了新的回复"
+	case eventNewComment:
+		return "你发布的内容有了新的评论"
+	default:
+		// A type this version does not know (an administrator action from a later one) still lists, with
+		// wording that promises nothing about the content.
+		return "你有一条新的通知"
+	}
+}
+
 // notifyRecipients records one event for every recipient, in the caller's transaction.
 //
 // Two rules live here rather than at the call sites. The actor is dropped, because nobody is told about

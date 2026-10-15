@@ -55,6 +55,10 @@ func Register(mux *http.ServeMux, deps Deps) {
 		mux.Handle("PATCH /api/v1/contents/{content_id}", auth.Require(deps.Sessions, false, http.HandlerFunc(deps.editContent)))
 		mux.Handle("DELETE /api/v1/contents/{content_id}", auth.Require(deps.Sessions, false, http.HandlerFunc(deps.deleteContent)))
 		mux.Handle("POST /api/v1/attachments", auth.Require(deps.Sessions, false, http.HandlerFunc(deps.uploadImage)))
+		// The notification list is the one read in this package that is not public: it is the recipient's
+		// own inbox, and it goes through the same session check as the writes.
+		mux.Handle("GET /api/v1/me/notifications", auth.Require(deps.Sessions, false, http.HandlerFunc(deps.listNotifications)))
+		mux.Handle("PUT /api/v1/me/notifications/{notification_id}/read", auth.Require(deps.Sessions, false, http.HandlerFunc(deps.readNotification)))
 	}
 	if deps.Media != nil {
 		// Public: images are embedded in public content, so the route is readable without a session. The
