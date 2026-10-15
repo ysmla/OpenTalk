@@ -153,7 +153,8 @@ Docker Desktop恢复正常（Engine 29.6.1、Compose v5.1.4），`docker compose
 | Markdown写入校验 | `go test -count=1 -v ./internal/markdown` | PASS：围栏/缩进/行内代码里的`<script>`允许，正文里的原始HTML、注释、iframe拒绝；`javascript:`/`data:`/`vbscript:`/`file:`以及`java\tscript:`绕过写法全部拒绝；并有一组断言钉住解析器实际会把哪些目标变成链接 |
 | 清理任务 | `go test -count=1 -v ./internal/content -run TestCleanup`，以及真实执行 `go run ./cmd/admin -action cleanup` | PASS：过期待用附件被清除且未过期的保留、**已关联图片即使被强制改成过期待用也不清除**、删除内容后孤儿附件须等窗口且**归档未到期时保留**、到期归档正文置空标题置NULL、**文件已缺失的待删除行按完成处理**、重复运行不再重复计数。开发库上真实执行两次均为全0且未改动任何数据 |
 | 图片上传与读取 | `go test -count=1 -v ./internal/content -run TestImageUpload` | PASS：上传PNG写入pending行、**图片经 `/media/{key}` 由作者读回且画面与上传一致**（存储的是重编码结果，不是原始字节）、关联到内容后提升为active并清空delete_after、**删除内容后图片立即404**、非图片422、超像素422、未登录401、缺CSRF403、未知与穿越型key均404 |
-| 图片隐私边界 | `go test -count=1 -v ./internal/content -run TestImagePrivacy` | PASS：待用图片只有作者200，**游客与其他登录用户都是404**；过期待用图片连作者也404；可见内容的图片对游客200；**隐藏根主题后回答与评论的图片同时404**（回答行自身的 moderation_status 仍是 visible，所以只有祖先判断能拦住它）；删除根主题后回答图片立即404；同一图片被多处引用时**任一可见引用即可读**，全部不可见后404 |
+| 图片隐私边界 | `go test -count=1 -v ./internal/content -run TestImagePrivacy` | PASS（9个子测试）：待用图片只有作者200，**游客与其他登录用户都是404**；过期待用图片连作者也404；可见内容的图片对游客200；**隐藏根主题后回答与评论的图片同时404**（回答行自身的 moderation_status 仍是 visible，所以只有祖先判断能拦住它）；**隐藏回答后其下评论的图片同样404**（评论行与根问题都仍 visible，只有中间祖先判断能拦住它）；**隐藏串根评论后其回复图片404、而无关顶层评论图片仍200**（证明沿本条串判定，不是"一旦有隐藏就全拒"）；删除根主题后回答图片立即404；同一图片被多处引用时**任一可见引用即可读**，全部不可见后404；**某条引用的祖先被隐藏不影响另一条公开引用**（复核三轮新增，见 `privacy-reverification-2026-10-15.md`） |
+| 祖先可见性统一规则 | `go test -count=1 -v ./internal/content -run TestAncestorVisibility` | PASS（6个子测试）：**隐藏回答后作者编辑与删除该回答均为404 `CONTENT_NOT_FOUND`**，且正文与 `deleted_at` 未被改动；**隐藏回答后不能再往它下面发评论**（422 `INVALID_COMMENT_TARGET`）；**隐藏串根评论后不能再回复它**（422）；隐藏中间祖先后单个内容读取（`PublicContentByID`/`AnswerByContentID`/`CommentByContentID`）与图片路由**一致地拒绝**；隐藏根主题这一较宽保证未被收窄；**回复同时带回答与串根时，隐藏串根即让该回复与其图片失效，而回答本身仍可达**（复核三轮新增，见 `privacy-reverification-2026-10-15.md`）。前5个用例已实测在去掉修复后全部失败（编辑200、评论201、回复201、公开读取未返回找不到），第6个对"只取一个祖先"的旧表达式失败（`true`） |
 | 图片元数据剥离 | `go test -count=1 -v ./internal/media` | PASS：JPEG的COM段、PNG的tEXt块、GIF的注释扩展块在存储文件中都不再出现；GIF的帧数/延迟/循环保留；**PNG与WebP像素完全一致、JPEG在容差内一致**；EXIF方向1/3/6与非法值9的处理正确（6会交换宽高）；尺寸上限在像素解码之前生效 |
 | 删除级联 | `go test -count=1 -v ./internal/content -run TestDelete` | PASS：帖子连带全部评论、问题连带全部回答与评论、回答只连带其评论、**删除评论递归只删回复而不动祖先与无关分支**、原文与原标题写入归档且`purge_after`恰好为删除时间+30天、活跃标题被替换、已删除内容立即可读性与互动均失效、非作者与管理员403、重复删除404、禁言仍可删自己的内容 |
 | 内容编辑 | `go test -count=1 -v ./internal/content` | PASS：作者编辑正文并写入`edited_at`；非作者与**管理员**均403 NOT_CONTENT_OWNER；31分钟被拒409而29分钟仍可编辑（边界两侧都测）；**编辑不延长时限**；锁定主题409 TOPIC_LOCKED；**已解决不禁止编辑**；禁言403；已删除404；标题仅主题可改（回答422）；附件省略不改、空数组清空、他人附件拒绝；接口层401/CSRF_REJECTED、回答返回answer形状、主题返回discussion形状、危险正文422、未知字段400 |
@@ -202,13 +203,16 @@ Docker Desktop曾在本机创建/清理 `dockerInference` 运行时端点时退�
 
 ## 图片隐私修复（2026-10-14）
 
-[2026-10-14测试报告](test-report-2026-10-14.md) 复现了三项隐私缺陷，本次全部修复；三个 `reviewprobe` 探针已改成常规测试，`scripts/test-integration.ps1` 不再需要 `-PrivacyProbes`。
+[2026-10-14测试报告](test-report-2026-10-14.md) 复现了三项隐私缺陷，本次全部修复；三个 `reviewprobe` 探针已改成常规测试，`scripts/test-integration.ps1` 不再需要 `-PrivacyProbes`。[复核报告](privacy-reverification-2026-10-14.md) 随后发现祖先判定只回溯到根主题、漏掉了中间祖先，并连带发现同一根因下的三处可见性缺口；两者均已修复、统一到 `internal/content/visibility.go`，同样是常规测试。[第三轮复核](privacy-reverification-2026-10-15.md) 再发现两个同根因的边界问题——"一行有多个祖先却只取一个"与"按图片汇总引用链"——也已修复并转正，见下表最后两行。
 
 | 缺陷 | 修复 | 现在的断言位置 |
 |---|---|---|
 | 未发布（pending）图片允许任何拿到链接的人读取 | `attachmentReadableFor` 对 pending 行同时要求"会话用户 == owner_id"且"未过期"；`GET /media/{key}` 每次请求解析可选会话（无会话/过期/伪造都按游客处理，不是错误），并补上 `Vary: Cookie` | `TestImagePrivacyBoundaries` 的前两个子测试 |
-| 隐藏根主题后，回答与评论里的图片仍可访问 | 可见性判断改为沿祖先链解析：先定位引用该图片的内容行，再由它的 topic/answer/comment 关系求出根主题，根主题的 `deleted_at` 与 `moderation_status` 必须同时可见 | `TestImagePrivacyBoundaries` 的后三个子测试 |
-| 上传图片原样落盘，EXIF/GPS 等元数据被保存 | `media.Save` 改为"解码 → 重新编码再落盘"。JPEG 用质量88重编码，PNG/WebP 用无附加块的编码器，GIF 用 `gif.DecodeAll`+`EncodeAll` 保留动画；EXIF 方向先应用到像素再丢弃，避免剥离元数据导致手机照片转向 | `TestUploadStripsImageMetadata`、`TestUploadAppliesExifOrientation` |
+| 隐藏根主题后，回答与评论里的图片仍可访问 | 可见性判断改为沿祖先链解析，并由 `internal/content/visibility.go` 的同一规则判定：引用行与祖先链上**每一级**的 `deleted_at` 与 `moderation_status` 都必须可见 | `TestImagePrivacyBoundaries` 的第4个子测试 |
+| 隐藏回答后，其下评论的图片仍可访问（复核二轮发现） | 祖先解析不再直接跳到根主题，而是**走完整条链**：主题是自身祖先并终止、回答取 `question_id`、评论取 `answer_id`／串根 `parent_comment_id`，两者都没有时落到 `topic_id` | `TestImagePrivacyBoundaries` 的第5、6个子测试（`docs/privacy-reverification-2026-10-14.md`） |
+| 回答下的回复跳过串根评论权限（复核三轮发现） | 一行可能有**多个**祖先，而原表达式只取一个：`COALESCE(...,answer_id,parent_comment_id,...)` 遇到同时带回答与串根的回复就跳到回答，隐藏串根后回复与图片仍可达。表达式改为 `CONCAT_WS` 列出**全部**祖先，遍历改为按层展开的广度优先并保留访问集合与深度上限；可达的判据是"该行**所在闭包内每一行**都未删除未隐藏" | `TestAncestorVisibilityClosesIntermediateAncestors` 的第6个子测试（`docs/privacy-reverification-2026-10-15.md`） |
+| 隐藏一个引用的祖先会错误屏蔽同一图片的另一条公开引用（复核三轮发现） | 递归 CTE 只带 `attachment_id` 与当前 `content_id`，`NOT EXISTS` 按 `attachment_id` 汇总，丢掉了每条引用链的起点，于是任一引用链有隐藏祖先就否决全部引用。图片侧不再自己实现规则，改为调用 `visibleContentIDs`：先取该图片全部引用行，一次问各自是否可达，再按"任一可达引用即可读"合并。附件与内容读取因此共用同一份祖先遍历 | `TestImagePrivacyBoundaries` 的第9个子测试（`docs/privacy-reverification-2026-10-15.md`） |
+| 隐藏回答后作者仍能编辑/删除该回答；隐藏回答或串根评论后仍能往其下新增评论/回复；隐藏根主题后回答与评论的单个内容读取仍成功（复核二轮发现，同一根因） | 三处都改为调用 `requireVisible`：编辑与删除在取得根锁**之后**重新校验；`answerBelongsToTopic` 与 `loadReplyTarget` 要求目标在可见链内，否则按 `INVALID_COMMENT_TARGET` 拒绝；`PublicContentByID` 与三个 `*ByContentID` 先做可见性判定再认 kind。`edit.go` 中重复的 `rootTopicOf` 已删除 | `TestAncestorVisibilityClosesIntermediateAncestors` 的 5 个子测试 || 上传图片原样落盘，EXIF/GPS 等元数据被保存 | `media.Save` 改为"解码 → 重新编码再落盘"。JPEG 用质量88重编码，PNG/WebP 用无附加块的编码器，GIF 用 `gif.DecodeAll`+`EncodeAll` 保留动画；EXIF 方向先应用到像素再丢弃，避免剥离元数据导致手机照片转向 | `TestUploadStripsImageMetadata`、`TestUploadAppliesExifOrientation` |
 
 附带修正的代码审查项：尺寸上限现在由 `image.DecodeConfig` 在像素解码**之前**判定（`TestSaveLimitsBeforeDecodingPixels`），像素上限因此也无法被解压炸弹绕过。
 
@@ -233,7 +237,7 @@ python scripts/build_openapi.py
 
 | 检查 | 结果 |
 |---|---|
-| Go 全量测试（真实 MySQL 与临时 Redis） | PASS：18个包、74个顶层测试、504个通过事件、0失败、0跳过 |
+| Go 全量测试（真实 MySQL 与临时 Redis） | PASS：18个包、75个顶层测试、512个通过事件、0失败、0跳过 |
 | 全包语句覆盖率 | 67.0%（`-coverpkg=./...`；覆盖率不证明业务断言正确） |
 | gofmt / go vet / go build | 无输出 / 干净 / exit 0 |
 | React 生产构建 | exit 0（类型生成、tsc、vite build） |
@@ -241,5 +245,21 @@ python scripts/build_openapi.py
 | 进程与代理烟雾检查 | PASS：`/health` 200、前端 200、Vite代理 200、`/ready` **200**、未实现路由 404、未知media key 404 |
 
 `/ready` 返回200说明MySQL、Redis可用且schema_migrations版本等于 `migrations.Latest`、dirty为false，本次已满足。此前该脚本硬编码了一个错误的数据库口令，因此只断言503；现在口令从开发容器读取，断言的是真实200。
+
+## 本次修复的验收（2026-10-15）
+
+第三轮复核发现的两个边界问题（"一行有多个祖先却只取一个"与"按图片汇总引用链"）修复后的验收：
+
+| 检查 | 结果 |
+|---|---|
+| Go 全量测试（`scripts/test-integration.ps1`，真实 MySQL 与临时独立 Redis） | PASS：18个包、75个顶层测试、514个通过事件、0失败、0跳过 |
+| 全包语句覆盖率 | 67.6%（`-coverpkg=./...`） |
+| 新增两个回归子测试的检测能力 | 分别对"单祖先 `COALESCE` 表达式"与"按图片汇总全部引用链"两种旧实现失败（`true` / `404`），修复后通过 |
+| gofmt / go vet / go build | 无输出 / 干净 / exit 0 |
+| React 生产构建 | exit 0（重新生成的类型无差异） |
+| 合同与SQL校验 | PASS：生成OpenAPI无差异；50个模型、57个操作、23张表3对迁移 |
+| HTTP 烟雾检查 | PASS：`/health` 200、前端 200、Vite代理 200、`/ready` 200、未实现路由 404、未知media key 404 |
+
+事件数（514）比上一轮（512）多出的部分即本轮新增的两个子测试及其父测试事件。详情见 [图片权限复发复核](privacy-reverification-2026-10-15.md)。
 
 Docker Desktop曾在本机创建/清理 `dockerInference` 运行时端点时退出，导致真实库检查一度SKIP；该故障在2026-10-14已不再复现。若再次出现同一报错，参考[Docker排障文档](https://docs.docker.com/desktop/troubleshoot-and-support/troubleshoot/)继续诊断，或改用单独的本地MySQL与Redis验证。无论环境如何，都不以SQL解析检查冒充建表成功。
