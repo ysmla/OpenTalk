@@ -119,7 +119,7 @@ cd ..\scripts ; python build_openapi.py
 | 8 | 举报与审核 | **已完成**：后端六个操作 + 前端三处入口（举报按钮、[我的举报](verification-2026-10-15-reports-frontend.md)、[管理端](verification-2026-10-15-reports-frontend.md) `#/admin/moderation`），且链路已在真实浏览器走通。未走过的小项：未登录路径、409 表现、表单边界 |
 | 9 | 上线准备 | 未开始 |
 
-数据基线：合同 57 个操作、46 implemented / 11 planned（39 条已实现路径）、63 个模型、23 张业务表、**4 组迁移**（`migrations.Latest = 4`）；全量真实库测试 19 个包 / 125 个顶层测试 / 585 个通过事件 / 0 失败 / 0 跳过，语句覆盖率约 70%（`cmd/worker` 的语句计入分母但无测试，读数因此偏低）。
+数据基线：合同 57 个操作、50 implemented / 7 planned（42 条已实现路径）、63 个模型、23 张业务表、**4 组迁移**（`migrations.Latest = 4`）；全量真实库测试 19 个包 / 128 个顶层测试 / 588 个通过事件 / 0 失败 / 0 跳过，语句覆盖率约 70%（`cmd/worker` 的语句计入分母但无测试，读数因此偏低）。
 
 最近落地（2026-10-15，按提交顺序）：`5a5ed55` 搜索后端 → `55c6a0f` 搜索界面 → 本轮 `perf(search)` 索引优化 + 筛选控件。索引一节的要点：把两个 `MATCH` 写成 `OR` 等于没优化（实测 8.41ms，与 `LIKE` 扫描 11.4ms 接近），改成"两个索引子查询 `UNION` 后再 join"后为 **0.172ms**；单字查询走扫描回退，BOOLEAN MODE 运算符从用户输入里去掉。三个由测试抓到的自身缺陷（原始输入 vs 净化后的词、空串落进 `LIKE '%%'`）均已修复并有断言覆盖。
 
@@ -165,7 +165,7 @@ cd ..\scripts ; python build_openapi.py
 | --- | --- | --- |
 | **B1** | 站内通知界面：`#/me/notifications`、导航未读入口 | **已完成**（e554dcd，界面已写、浏览器走查并入 B6 一起做） |
 | **B2** | GET /me/contents、GET /users/{public_id}、GET /users/{public_id}/contents | **已完成**（[报告](verification-2026-10-15-profiles.md)）：公开列表在 SQL 里排除匿名，公开资料只给公开字段 |
-| **B3** | `POST/GET /admin/restrictions`、`DELETE /admin/restrictions/{id}`、`GET /admin/users` | 封禁/禁言会影响登录与发言（`user_restrictions` 与登录检查已存在），是审核能力的下一块 |
+| **B3** | `POST/GET /admin/restrictions`、`DELETE /admin/restrictions/{id}`、`GET /admin/users` | **已完成**（[报告](verification-2026-10-15-restrictions.md)）：封禁同事务撤销会话、撤销写时间不删行、每次变更都写审计、用户列表不查邮箱 |
 | **B4** | `POST/PUT /admin/boards`、`POST/PUT /admin/tags`、`PATCH /admin/topics/{topic_id}` | 站点结构维护；与 B3 共用管理端界面 |
 | **B5** | 管理员删除他人内容（`can_delete` 对管理员）、`POST /admin/deleted-archives/read`、`POST /admin/anonymous-traces` | 风险最高：涉及他人内容、原文读取与匿名追溯，放在结构类改动之后，且必须有审计 |
 | **B6** | 上述管理能力的前端界面整合（`#/admin/*`）与浏览器走查 | 界面最后做，避免接口还在变时反复改 |

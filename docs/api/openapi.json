@@ -6388,7 +6388,7 @@
             }
           }
         },
-        "x-implementation-status": "planned",
+        "x-implementation-status": "implemented",
         "x-required-role": "admin",
         "parameters": [
           {
@@ -6541,7 +6541,7 @@
             }
           }
         },
-        "x-implementation-status": "planned",
+        "x-implementation-status": "implemented",
         "x-required-role": "admin",
         "requestBody": {
           "required": true,
@@ -6678,7 +6678,7 @@
             }
           }
         },
-        "x-implementation-status": "planned",
+        "x-implementation-status": "implemented",
         "x-required-role": "admin",
         "parameters": [
           {
@@ -6824,7 +6824,7 @@
             }
           }
         },
-        "x-implementation-status": "planned",
+        "x-implementation-status": "implemented",
         "x-required-role": "admin",
         "parameters": [
           {

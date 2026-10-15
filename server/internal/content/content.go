@@ -98,6 +98,12 @@ func Register(mux *http.ServeMux, deps Deps) {
 	// audit trail can say which of the two an administrator actually chose.
 	mux.Handle("GET /api/v1/admin/reports", auth.Require(deps.Sessions, true, http.HandlerFunc(deps.listAdminReports)))
 	mux.Handle("PATCH /api/v1/admin/reports/{report_id}", auth.Require(deps.Sessions, true, http.HandlerFunc(deps.resolveReport)))
+	// Restrictions and the account list. A ban revokes sessions in the same transaction as the restriction,
+	// so there is no window in which an account is banned but still signed in.
+	mux.Handle("POST /api/v1/admin/restrictions", auth.Require(deps.Sessions, true, http.HandlerFunc(deps.createRestriction)))
+	mux.Handle("GET /api/v1/admin/restrictions", auth.Require(deps.Sessions, true, http.HandlerFunc(deps.listRestrictions)))
+	mux.Handle("DELETE /api/v1/admin/restrictions/{restriction_id}", auth.Require(deps.Sessions, true, http.HandlerFunc(deps.revokeRestriction)))
+	mux.Handle("GET /api/v1/admin/users", auth.Require(deps.Sessions, true, http.HandlerFunc(deps.listAdminUsers)))
 	if deps.Media != nil {
 		// Public: images are embedded in public content, so the route is readable without a session. The
 		// key grants nothing on its own: the handler asks the database whether this image may be shown to
