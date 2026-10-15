@@ -119,7 +119,7 @@ cd ..\scripts ; python build_openapi.py
 | 8 | 举报与审核 | **已完成**：后端六个操作 + 前端三处入口（举报按钮、[我的举报](verification-2026-10-15-reports-frontend.md)、[管理端](verification-2026-10-15-reports-frontend.md) `#/admin/moderation`），且链路已在真实浏览器走通。未走过的小项：未登录路径、409 表现、表单边界 |
 | 9 | 上线准备 | 未开始 |
 
-数据基线：合同 57 个操作、43 implemented / 14 planned（36 条已实现路径）、63 个模型、23 张业务表、**4 组迁移**（`migrations.Latest = 4`）；全量真实库测试 19 个包 / 122 个顶层测试 / 582 个通过事件 / 0 失败 / 0 跳过，语句覆盖率约 70%（`cmd/worker` 的语句计入分母但无测试，读数因此偏低）。
+数据基线：合同 57 个操作、46 implemented / 11 planned（39 条已实现路径）、63 个模型、23 张业务表、**4 组迁移**（`migrations.Latest = 4`）；全量真实库测试 19 个包 / 125 个顶层测试 / 585 个通过事件 / 0 失败 / 0 跳过，语句覆盖率约 70%（`cmd/worker` 的语句计入分母但无测试，读数因此偏低）。
 
 最近落地（2026-10-15，按提交顺序）：`5a5ed55` 搜索后端 → `55c6a0f` 搜索界面 → 本轮 `perf(search)` 索引优化 + 筛选控件。索引一节的要点：把两个 `MATCH` 写成 `OR` 等于没优化（实测 8.41ms，与 `LIKE` 扫描 11.4ms 接近），改成"两个索引子查询 `UNION` 后再 join"后为 **0.172ms**；单字查询走扫描回退，BOOLEAN MODE 运算符从用户输入里去掉。三个由测试抓到的自身缺陷（原始输入 vs 净化后的词、空串落进 `LIKE '%%'`）均已修复并有断言覆盖。
 
@@ -156,6 +156,22 @@ cd ..\scripts ; python build_openapi.py
 - 集成测试入口：`scripts/test-integration.ps1`（自己从容器读凭证，另起临时 Redis）。
 - 浏览器走查入口：`scripts/smoke-local.ps1` 启停 API 与 Vite；要长时间保留服务时用 `.cache/browser-serve.ps1`，夹具库与账号见 [内容侧前端浏览器走查](verification-2026-10-15-content-frontend-browser.md)。夹具库 `opentalk_browser` 是刻意留下供复查的，删除即可：`DROP DATABASE opentalk_browser`。
 - 走查截图在本机 `.cache/browser-walkthrough/`（已 gitignore）。
+
+## 剩余开发批次（2026-10-15 排定，按依赖顺序）
+
+第 8 项之后还有 14 个计划中操作与一处前端缺口。核对后按依赖顺序排成六批，每批都按本项目一贯的要求交付：真实库测试、合同状态翻转（并同步 `docs/api/README.md` 计数，门禁会校验）、独立验证报告、一次提交。
+
+| 批次 | 内容 | 为什么在这个位置 |
+| --- | --- | --- |
+| **B1** | 站内通知界面：`#/me/notifications`、导航未读入口 | **已完成**（e554dcd，界面已写、浏览器走查并入 B6 一起做） |
+| **B2** | GET /me/contents、GET /users/{public_id}、GET /users/{public_id}/contents | **已完成**（[报告](verification-2026-10-15-profiles.md)）：公开列表在 SQL 里排除匿名，公开资料只给公开字段 |
+| **B3** | `POST/GET /admin/restrictions`、`DELETE /admin/restrictions/{id}`、`GET /admin/users` | 封禁/禁言会影响登录与发言（`user_restrictions` 与登录检查已存在），是审核能力的下一块 |
+| **B4** | `POST/PUT /admin/boards`、`POST/PUT /admin/tags`、`PATCH /admin/topics/{topic_id}` | 站点结构维护；与 B3 共用管理端界面 |
+| **B5** | 管理员删除他人内容（`can_delete` 对管理员）、`POST /admin/deleted-archives/read`、`POST /admin/anonymous-traces` | 风险最高：涉及他人内容、原文读取与匿名追溯，放在结构类改动之后，且必须有审计 |
+| **B6** | 上述管理能力的前端界面整合（`#/admin/*`）与浏览器走查 | 界面最后做，避免接口还在变时反复改 |
+| 收尾 | 第 9 项上线准备：部署、TLS、备份恢复演练、端到端验收 | 上线前最后一步 |
+
+贯穿各批的不变量（不得因赶进度而放宽）：匿名内容不得经任何新接口泄露内部 ID、公开 ID、昵称或头像；删除必须立即影响待发通知；任何管理动作都要留审计且不改内容正文；每批结束都要更新进度快照与数据基线。
 
 ## 后续确认方式
 

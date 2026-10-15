@@ -50,6 +50,10 @@ func Register(mux *http.ServeMux, deps Deps) {
 	mux.HandleFunc("GET /api/v1/contents/{content_id}", deps.getContent)
 	mux.HandleFunc("GET /api/v1/contents/{content_id}/permissions", deps.getContentPermissions)
 	mux.HandleFunc("GET /api/v1/tags", deps.listTags)
+	// Another reader's public profile and their public content. Anonymous rows are excluded in SQL, which is
+	// what keeps "traceable anonymity" from becoming "browseable anonymity".
+	mux.HandleFunc("GET /api/v1/users/{public_id}", deps.getUserProfile)
+	mux.HandleFunc("GET /api/v1/users/{public_id}/contents", deps.listUserContents)
 	// Search is public like every other read here, and it never widens visibility: it narrows candidates and
 	// then hands each one to the same reader the other endpoints use.
 	mux.HandleFunc("GET /api/v1/search", deps.searchContents)
@@ -77,6 +81,9 @@ func Register(mux *http.ServeMux, deps Deps) {
 		// are readable by their reporter, and nothing here is visible to the reported author.
 		mux.Handle("POST /api/v1/reports", auth.Require(deps.Sessions, false, http.HandlerFunc(deps.createReport)))
 		mux.Handle("GET /api/v1/me/reports", auth.Require(deps.Sessions, false, http.HandlerFunc(deps.listMyReports)))
+		// The reader's own content, anonymous posts included: it is their own history, and hiding it from
+		// them would make it unusable.
+		mux.Handle("GET /api/v1/me/contents", auth.Require(deps.Sessions, false, http.HandlerFunc(deps.listMyContents)))
 	}
 	// Public, but only because the token is the credential: it names one account and one topic, and the
 	// signature is the only thing that authorises the change. POST plus the middleware's exact-Origin check
