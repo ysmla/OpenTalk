@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { listAllBoards, listTopics, isTopic, type Board, type Topic, type TopicSort } from '../api/content';
+import { listAllBoards, listAllTags, listTopics, isTopic, type Board, type Tag, type Topic, type TopicSort } from '../api/content';
 import type { CurrentUser } from '../api/auth';
 import { Alert, Status } from '../components/Alert';
 import { authorLabel, TagList, TopicStatus } from '../components/ContentMeta';
@@ -31,6 +31,7 @@ export function TopicsView({ user, sessionReady, boardId, tagId, onUnauthenticat
  const [sort, setSort] = useState<TopicSort>('newest');
  const [boards, setBoards] = useState<Board[]>([]);
  const [boardFailure, setBoardFailure] = useState<Failure>();
+ const [filterTag, setFilterTag] = useState<Tag>();
 
  // The board strip is a convenience filter, so a failure here must not hide the
  // list itself: it is reported next to the strip and the list still loads. All
@@ -45,6 +46,23 @@ export function TopicsView({ user, sessionReady, boardId, tagId, onUnauthenticat
   });
   return () => controller.abort();
  }, []);
+
+ // A tag-filtered page has to name the tag it filters by: the id alone tells a reader nothing. The
+ // contract has no by-id tag read, so the (administrator-maintained, therefore small) catalogue is read
+ // and the id looked up in it; a tag that is not there falls back to the id in the hint below.
+ useEffect(() => {
+  if (tagId === undefined) {
+   setFilterTag(undefined);
+   return;
+  }
+  const controller = new AbortController();
+  listAllTags(controller.signal).then(items => {
+   if (!controller.signal.aborted) setFilterTag(items.find(tag => tag.id === tagId));
+  }).catch(() => {
+   // The list is the point of the page; a tag label that cannot be resolved must not fail it.
+  });
+  return () => controller.abort();
+ }, [tagId]);
 
  const filterKey = [boardId ?? '', tagId ?? '', sort].join('|');
  const list = useCursorList<Topic>(
@@ -61,10 +79,12 @@ export function TopicsView({ user, sessionReady, boardId, tagId, onUnauthenticat
 
  return <main className="page">
   <p className="eyebrow">OPENTALK</p>
-  <h1>{tagId !== undefined ? '标签下的主题' : boardName ? `${boardName} 的主题` : '主题列表'}</h1>
+  <h1>{tagId !== undefined ? (filterTag ? `标签：${filterTag.name}` : '标签下的主题') : boardName ? `${boardName} 的主题` : '主题列表'}</h1>
   {boardId !== undefined && boardName === undefined && !boardFailure &&
    <p className="hint">正在读取板块信息，或该板块不存在，下面显示的是全部板块的主题。</p>}
-  {tagId !== undefined && <p className="hint">正在按标签筛选（标签 #{tagId}）。</p>}
+  {tagId !== undefined && <p className="hint">{filterTag
+   ? `正在按标签筛选：${filterTag.description}`
+   : `正在按标签筛选（标签 #${tagId}）。`}</p>}
 
   <nav className="links" aria-label="板块筛选">
    <a href="#/" aria-current={boardId === undefined ? 'page' : undefined}>全部板块</a>

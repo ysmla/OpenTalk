@@ -40,8 +40,12 @@ export function replyTargetLabel(target: ContentAuthor | undefined, commentId: s
 /** Administrator-maintained tags; a topic carries at most five. */
 export function TagList({ tags }: { tags: Tag[] }) {
  if (tags.length === 0) return null;
+ // Each chip links to the tag-filtered list (#/tag/{id}), which reuses the topic list with `tag_id`.
+ // The description stays in `title`: it is a hint, not a label competing with the name.
  return <ul className="tags">
-  {tags.map(tag => <li key={tag.id} title={tag.description}>{tag.name}</li>)}
+  {tags.map(tag => <li key={tag.id} title={tag.description}>
+   <a href={`#/tag/${encodeURIComponent(tag.id)}`}>{tag.name}</a>
+  </li>)}
  </ul>;
 }
 
