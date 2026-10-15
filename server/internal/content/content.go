@@ -39,6 +39,14 @@ type Deps struct {
 // auth.Require, which performs the exact-Origin check and the session-bound CSRF token check.
 func Register(mux *http.ServeMux, deps Deps) {
 	mux.HandleFunc("GET /api/v1/boards", deps.listBoards)
+	// The read routes are public: a guest may browse. Only the permission summary varies by viewer, and it
+	// resolves the session optionally rather than requiring one.
+	mux.HandleFunc("GET /api/v1/topics", deps.listTopics)
+	mux.HandleFunc("GET /api/v1/topics/{topic_id}/comments", deps.listComments)
+	mux.HandleFunc("GET /api/v1/questions/{topic_id}/answers", deps.listAnswers)
+	mux.HandleFunc("GET /api/v1/contents/{content_id}", deps.getContent)
+	mux.HandleFunc("GET /api/v1/contents/{content_id}/permissions", deps.getContentPermissions)
+	mux.HandleFunc("GET /api/v1/tags", deps.listTags)
 	if deps.Sessions != nil {
 		mux.Handle("POST /api/v1/topics", auth.Require(deps.Sessions, false, http.HandlerFunc(deps.createTopic)))
 		mux.Handle("POST /api/v1/answers", auth.Require(deps.Sessions, false, http.HandlerFunc(deps.createAnswer)))

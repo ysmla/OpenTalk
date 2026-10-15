@@ -135,6 +135,39 @@ func requireVisible(ctx context.Context, q queryer, contentID uint64) error {
 	return nil
 }
 
+// ancestorsReachable reports whether everything *above* one row is undeleted and unmoderated. The row
+// itself is deliberately excluded, because the one caller is the tombstone route: a deleted row is what it
+// is describing, and the question there is only whether the reader may learn that the row existed.
+//
+// A row with no ancestors — a topic — is trivially reachable. Everything else has to pass the same rule
+// every other reader uses, so a deleted comment under a hidden answer still reports the not-found that an
+// id nobody ever issued would produce.
+func ancestorsReachable(ctx context.Context, q queryer, contentID uint64) (bool, error) {
+	closure, err := ancestorClosure(ctx, q, []uint64{contentID})
+	if err != nil {
+		return false, err
+	}
+	ancestors := make([]uint64, 0, len(closure))
+	for _, id := range closure {
+		if id != contentID {
+			ancestors = append(ancestors, id)
+		}
+	}
+	if len(ancestors) == 0 {
+		return true, nil
+	}
+	visible, err := visibleContentIDs(ctx, q, ancestors)
+	if err != nil {
+		return false, err
+	}
+	for _, id := range ancestors {
+		if !visible[id] {
+			return false, nil
+		}
+	}
+	return true, nil
+}
+
 // visibleContentIDs answers one question per requested row: is that row reachable, meaning is every row in
 // its ancestor closure undeleted and unmoderated?
 //

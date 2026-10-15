@@ -150,9 +150,11 @@ func (s Store) CreateTopic(ctx context.Context, in NewTopic) (uint64, error) {
 	return topicID, nil
 }
 
-func refuseMuted(ctx context.Context, tx *sql.Tx, userID uint64) error {
+// refuseMuted reports ErrAccountMuted while a mute is in force. It takes the shared read surface rather
+// than a transaction, because the permission endpoint asks the same question outside any write.
+func refuseMuted(ctx context.Context, q queryer, userID uint64) error {
 	var muted bool
-	err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM user_restrictions r
+	err := q.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM user_restrictions r
  WHERE r.user_id=? AND r.kind='mute' AND r.revoked_at IS NULL AND r.starts_at<=UTC_TIMESTAMP(6)
  AND (r.ends_at IS NULL OR r.ends_at>UTC_TIMESTAMP(6)))`, userID).Scan(&muted)
 	if err != nil {
@@ -238,6 +240,11 @@ type TopicView struct {
 	ResolvedAt      sql.NullTime
 	Tags            []Tag
 	Attachments     []Attachment
+	// createdKey and activityKey are the list orderings projected by the query (see read.go). They are
+	// carried on the view so a page's cursor is the value the rows were sorted by, not a second computation
+	// in Go that could disagree with it.
+	createdKey  int64
+	activityKey int64
 }
 
 // Tag is a tag attached to a topic.
@@ -266,33 +273,14 @@ func (s Store) TopicByContentID(ctx context.Context, contentID uint64) (TopicVie
 		return TopicView{}, err
 	}
 	var view TopicView
-	var avatarKey sql.NullString
-	var anonymousNumber sql.NullInt64
-	err := s.DB.QueryRowContext(ctx, `
-SELECT c.id,c.author_id,c.body_md,c.is_anonymous,c.created_at,c.edited_at,
- t.board_id,b.kind,t.title,t.is_locked,t.is_pinned,t.last_activity_at,
- u.public_id,u.nickname,u.created_at,a.storage_key,ai.display_number,
- q.resolution_status,q.resolved_at
-FROM contents c
-JOIN topics t ON t.content_id=c.id
-JOIN boards b ON b.id=t.board_id
-JOIN users u ON u.id=c.author_id
-LEFT JOIN attachments a ON a.id=u.avatar_attachment_id AND a.status IN ('pending','active')
-LEFT JOIN anonymous_identities ai ON ai.id=c.anonymous_identity_id
-LEFT JOIN questions q ON q.topic_id=c.id
-WHERE c.id=?`, contentID).
-		Scan(&view.ContentID, &view.AuthorID, &view.BodyMD, &view.IsAnonymous, &view.CreatedAt, &view.EditedAt,
-			&view.BoardID, &view.BoardKind, &view.Title, &view.IsLocked, &view.IsPinned, &view.LastActivityAt,
-			&view.AuthorPublicID, &view.AuthorNickname, &view.AuthorCreatedAt, &avatarKey, &anonymousNumber,
-			&view.ResolutionState, &view.ResolvedAt)
+	// The column list and joins live in read.go so the list reader and this one cannot drift apart.
+	view, err := scanTopicView(s.DB.QueryRowContext(ctx, topicViewQuery+` WHERE c.id=?`, contentID))
 	if errors.Is(err, sql.ErrNoRows) {
 		return view, ErrTopicNotFound
 	}
 	if err != nil {
 		return view, err
 	}
-	view.AuthorAvatarKey = avatarKey.String
-	view.AnonymousNumber = int(anonymousNumber.Int64)
 	if view.Tags, err = s.topicTags(ctx, contentID); err != nil {
 		return view, err
 	}
@@ -304,29 +292,22 @@ WHERE c.id=?`, contentID).
 
 var ErrTopicNotFound = errors.New("topic not found")
 
+// topicTags and topicAttachments read one content's details. Both delegate to the batched readers in
+// read.go, so a list page and a single row answer from the same queries.
 func (s Store) topicTags(ctx context.Context, contentID uint64) ([]Tag, error) {
-	rows, err := s.DB.QueryContext(ctx, `SELECT g.id,g.name,g.description FROM topic_tags tt
- JOIN tags g ON g.id=tt.tag_id WHERE tt.topic_id=? ORDER BY g.id`, contentID)
+	grouped, err := s.tagsForContents(ctx, []uint64{contentID})
 	if err != nil {
 		return nil, err
 	}
-	return scanRows(rows, func(rows *sql.Rows) (Tag, error) {
-		var tag Tag
-		return tag, rows.Scan(&tag.ID, &tag.Name, &tag.Description)
-	})
+	return grouped[contentID], nil
 }
 
 func (s Store) topicAttachments(ctx context.Context, contentID uint64) ([]Attachment, error) {
-	rows, err := s.DB.QueryContext(ctx, `SELECT a.id,a.storage_key,a.mime_type,a.byte_size
- FROM content_attachments ca JOIN attachments a ON a.id=ca.attachment_id
- WHERE ca.content_id=? AND a.status IN ('pending','active') ORDER BY a.id`, contentID)
+	grouped, err := s.attachmentsForContents(ctx, []uint64{contentID})
 	if err != nil {
 		return nil, err
 	}
-	return scanRows(rows, func(rows *sql.Rows) (Attachment, error) {
-		var attachment Attachment
-		return attachment, rows.Scan(&attachment.ID, &attachment.Key, &attachment.MIMEType, &attachment.ByteSize)
-	})
+	return grouped[contentID], nil
 }
 
 // placeholders builds "?,?,?" for an IN clause of n values.

@@ -34,25 +34,24 @@ type rootTopic struct {
 	Resolution  string
 }
 
-// lockRootTopic takes the discussion's root lock. Every write that touches a discussion locks the root
-// topic row first, which is the uniform lock order the design documents: it is what stops "mark solved"
-// or "lock" from interleaving with "add a reply", so a submission that races a state change either
-// sees the new state or made the state change wait. FOR UPDATE also locks the joined contents and
-// questions rows — exactly the rows the competing operations need to read before they write.
-func lockRootTopic(ctx context.Context, tx *sql.Tx, topicID uint64) (rootTopic, error) {
-	var root rootTopic
-	var deletedAt sql.NullTime
-	var moderation string
-	var resolution sql.NullString
-	err := tx.QueryRowContext(ctx, `
+// rootTopicQuery reads the discussion root. The column list is written once; lockRootTopic appends FOR
+// UPDATE to the same text, and loadRootTopic runs it without a lock, so a reader and a writer can never
+// disagree about what the root's state is.
+const rootTopicQuery = `
 SELECT t.content_id,t.board_id,t.is_locked,c.author_id,c.is_anonymous,c.deleted_at,c.moderation_status,
  q.resolution_status
 FROM topics t
 JOIN contents c ON c.id=t.content_id
 LEFT JOIN questions q ON q.topic_id=t.content_id
-WHERE t.content_id=? FOR UPDATE`, topicID).
-		Scan(&root.ContentID, &root.BoardID, &root.IsLocked, &root.AuthorID, &root.IsAnonymous,
-			&deletedAt, &moderation, &resolution)
+WHERE t.content_id=?`
+
+func scanRootTopic(row scanner) (rootTopic, error) {
+	var root rootTopic
+	var deletedAt sql.NullTime
+	var moderation string
+	var resolution sql.NullString
+	err := row.Scan(&root.ContentID, &root.BoardID, &root.IsLocked, &root.AuthorID, &root.IsAnonymous,
+		&deletedAt, &moderation, &resolution)
 	if errors.Is(err, sql.ErrNoRows) {
 		return root, ErrTopicNotFound
 	}
@@ -64,6 +63,20 @@ WHERE t.content_id=? FOR UPDATE`, topicID).
 	root.IsQuestion = resolution.Valid
 	root.Resolution = resolution.String
 	return root, nil
+}
+
+// lockRootTopic takes the discussion's root lock. Every write that touches a discussion locks the root
+// topic row first, which is the uniform lock order the design documents: it is what stops "mark solved"
+// or "lock" from interleaving with "add a reply", so a submission that races a state change either
+// sees the new state or made the state change wait. FOR UPDATE also locks the joined contents and
+// questions rows — exactly the rows the competing operations need to read before they write.
+func lockRootTopic(ctx context.Context, tx *sql.Tx, topicID uint64) (rootTopic, error) {
+	return scanRootTopic(tx.QueryRowContext(ctx, rootTopicQuery+` FOR UPDATE`, topicID))
+}
+
+// loadRootTopic reads the same row without a lock, for readers that only have to decide what to show.
+func loadRootTopic(ctx context.Context, q queryer, topicID uint64) (rootTopic, error) {
+	return scanRootTopic(q.QueryRowContext(ctx, rootTopicQuery, topicID))
 }
 
 // guardNewInteraction applies the rules that every new piece of interaction shares. A deleted or hidden
@@ -248,30 +261,14 @@ func (s Store) AnswerByContentID(ctx context.Context, contentID uint64) (AnswerV
 		return AnswerView{}, err
 	}
 	var view AnswerView
-	var avatarKey sql.NullString
-	var anonymousNumber sql.NullInt64
-	err := s.DB.QueryRowContext(ctx, `
-SELECT c.id,c.author_id,c.body_md,c.is_anonymous,c.created_at,c.edited_at,
- a.question_id,tc.author_id,tc.is_anonymous,
- u.public_id,u.nickname,u.created_at,av.storage_key,ai.display_number
-FROM contents c
-JOIN answers a ON a.content_id=c.id
-JOIN contents tc ON tc.id=a.question_id
-JOIN users u ON u.id=c.author_id
-LEFT JOIN attachments av ON av.id=u.avatar_attachment_id AND av.status IN ('pending','active')
-LEFT JOIN anonymous_identities ai ON ai.id=c.anonymous_identity_id
-WHERE c.id=?`, contentID).
-		Scan(&view.ContentID, &view.AuthorID, &view.BodyMD, &view.IsAnonymous, &view.CreatedAt, &view.EditedAt,
-			&view.TopicID, &view.TopicAuthorID, &view.TopicIsAnonymous,
-			&view.AuthorPublicID, &view.AuthorNickname, &view.AuthorCreatedAt, &avatarKey, &anonymousNumber)
+	// The column list and joins live in read.go so the answer list and this reader cannot drift apart.
+	view, err := scanAnswerView(s.DB.QueryRowContext(ctx, answerViewQuery+` WHERE c.id=?`, contentID))
 	if errors.Is(err, sql.ErrNoRows) {
 		return view, ErrTopicNotFound
 	}
 	if err != nil {
 		return view, err
 	}
-	view.AuthorAvatarKey = avatarKey.String
-	view.AnonymousNumber = int(anonymousNumber.Int64)
 	if view.Attachments, err = s.topicAttachments(ctx, contentID); err != nil {
 		return view, err
 	}

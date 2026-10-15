@@ -221,32 +221,14 @@ func (s Store) CommentByContentID(ctx context.Context, contentID uint64) (Commen
 		return CommentView{}, err
 	}
 	var view CommentView
-	var avatarKey sql.NullString
-	var anonymousNumber sql.NullInt64
-	err := s.DB.QueryRowContext(ctx, `
-SELECT c.id,c.author_id,c.body_md,c.is_anonymous,c.created_at,c.edited_at,
- cm.topic_id,cm.answer_id,cm.parent_comment_id,cm.reply_to_comment_id,
- tc.author_id,
- u.public_id,u.nickname,u.created_at,av.storage_key,ai.display_number
-FROM contents c
-JOIN comments cm ON cm.content_id=c.id
-JOIN contents tc ON tc.id=cm.topic_id
-JOIN users u ON u.id=c.author_id
-LEFT JOIN attachments av ON av.id=u.avatar_attachment_id AND av.status IN ('pending','active')
-LEFT JOIN anonymous_identities ai ON ai.id=c.anonymous_identity_id
-WHERE c.id=?`, contentID).
-		Scan(&view.ContentID, &view.AuthorID, &view.BodyMD, &view.IsAnonymous, &view.CreatedAt, &view.EditedAt,
-			&view.TopicID, &view.AnswerID, &view.ParentID, &view.ReplyToID,
-			&view.TopicAuthorID,
-			&view.AuthorPublicID, &view.AuthorNickname, &view.AuthorCreatedAt, &avatarKey, &anonymousNumber)
+	// The column list and joins live in read.go so the comment list and this reader cannot drift apart.
+	view, err := scanCommentView(s.DB.QueryRowContext(ctx, commentViewQuery+` WHERE c.id=?`, contentID))
 	if errors.Is(err, sql.ErrNoRows) {
 		return view, ErrTopicNotFound
 	}
 	if err != nil {
 		return view, err
 	}
-	view.AuthorAvatarKey = avatarKey.String
-	view.AnonymousNumber = int(anonymousNumber.Int64)
 	if view.Attachments, err = s.topicAttachments(ctx, contentID); err != nil {
 		return view, err
 	}

@@ -2168,7 +2168,7 @@
       "get": {
         "operationId": "listTags",
         "summary": "搜索标签",
-        "description": "搜索标签",
+        "description": "按名称排序的公开列表，游标绑定搜索文本；q按名称子串匹配，其中的LIKE通配符按字面转义。",
         "tags": [
           "tags"
         ],
@@ -2285,7 +2285,7 @@
             }
           }
         },
-        "x-implementation-status": "planned",
+        "x-implementation-status": "implemented",
         "parameters": [
           {
             "name": "cursor",
@@ -2324,7 +2324,7 @@
       "get": {
         "operationId": "listTopics",
         "summary": "读取帖子和问题",
-        "description": "读取帖子和问题",
+        "description": "置顶主题恒在最前，随后按newest（发布时间）或active（最后活动时间）倒序。游标绑定排序与全部筛选条件，并携带置顶标志。隐藏、删除内容不出现。board_id或tag_id不存在时返回404而不是空列表；resolution_status只匹配问答，讨论帖没有解决状态。",
         "tags": [
           "topics"
         ],
@@ -2441,7 +2441,7 @@
             }
           }
         },
-        "x-implementation-status": "planned",
+        "x-implementation-status": "implemented",
         "parameters": [
           {
             "name": "cursor",
@@ -2653,7 +2653,7 @@
       "get": {
         "operationId": "getContent",
         "summary": "读取内容或删除占位",
-        "description": "检查全部祖先可见性；隐藏内容统一404；删除内容返回不含原文的占位。",
+        "description": "检查全部祖先可见性；隐藏内容统一404。已删除内容返回不含原文、作者与图片的占位，且仅当其祖先链完整可达时返回——级联删除后的子内容仍按404处理，删除占位不会确认一条已经整体消失的内容。",
         "tags": [
           "contents"
         ],
@@ -2770,7 +2770,7 @@
             }
           }
         },
-        "x-implementation-status": "planned",
+        "x-implementation-status": "implemented",
         "parameters": [
           {
             "name": "content_id",
@@ -3074,7 +3074,7 @@
       "get": {
         "operationId": "getContentPermissions",
         "summary": "读取当前会话内容权限",
-        "description": "私有响应，不做公共缓存。最终写入仍需重新鉴权。",
+        "description": "私有响应，不做公共缓存；未登录访问返回六项全false，而不是401。最终写入仍需重新鉴权。can_edit为false还可能是超过30分钟编辑时限或处于禁言；can_set_resolution只有提问者为true，管理员不是例外；can_delete当前仅作者本人为true（管理员删除他人内容尚未实现，见开发说明）。",
         "tags": [
           "contents"
         ],
@@ -3195,7 +3195,7 @@
             }
           }
         },
-        "x-implementation-status": "planned",
+        "x-implementation-status": "implemented",
         "parameters": [
           {
             "name": "content_id",
@@ -3363,7 +3363,7 @@
       "get": {
         "operationId": "listAnswers",
         "summary": "读取问题回答",
-        "description": "读取问题回答",
+        "description": "按发布时间正序返回。讨论帖返回409 NOT_A_QUESTION；根问题不可见或不存在返回404。逐行仍走统一祖先可见性判定，而不是只信任SQL筛选。",
         "tags": [
           "questions"
         ],
@@ -3480,7 +3480,7 @@
             }
           }
         },
-        "x-implementation-status": "planned",
+        "x-implementation-status": "implemented",
         "parameters": [
           {
             "name": "topic_id",
@@ -3658,7 +3658,7 @@
       "get": {
         "operationId": "listComments",
         "summary": "读取主题或回答评论",
-        "description": "读取主题或回答评论",
+        "description": "按发布时间正序返回两层显示所需的两层数据：省略parent_comment_id时只返回顶层评论（整个主题，或answer_id指定的回答下的顶层评论），填写parent_comment_id时返回该串根下的全部回复。目标不可见、不属于该主题或不是串根时返回422 INVALID_COMMENT_TARGET；根主题不可见返回404。逐行仍走统一祖先可见性判定。",
         "tags": [
           "topics"
         ],
@@ -3775,7 +3775,7 @@
             }
           }
         },
-        "x-implementation-status": "planned",
+        "x-implementation-status": "implemented",
         "parameters": [
           {
             "name": "topic_id",
