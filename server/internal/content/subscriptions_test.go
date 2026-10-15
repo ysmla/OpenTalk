@@ -98,7 +98,7 @@ func TestUnsubscribeTokenDisablesOnlyItsTopic(t *testing.T) {
 	reader := env.newUser("reader")
 
 	// A token for one account and one topic, as the mail would carry it.
-	token, err := env.deps.mintUnsubscribeToken(reader, topic, time.Now())
+	token, err := mintUnsubscribeToken(env.deps.UnsubscribeKey, reader, topic, time.Now())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -137,7 +137,7 @@ func TestUnsubscribeTokenRejectsForgery(t *testing.T) {
 	reader := env.newUser("reader")
 	other := env.newUser("other")
 
-	valid, err := env.deps.mintUnsubscribeToken(reader, topic, time.Now())
+	valid, err := mintUnsubscribeToken(env.deps.UnsubscribeKey, reader, topic, time.Now())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -147,7 +147,7 @@ func TestUnsubscribeTokenRejectsForgery(t *testing.T) {
 
 	// A valid token for another topic still only does what it says — but here the point is that the two
 	// halves cannot be recombined: swapping in another payload breaks the signature.
-	otherToken, err := env.deps.mintUnsubscribeToken(other, otherTopic, time.Now())
+	otherToken, err := mintUnsubscribeToken(env.deps.UnsubscribeKey, other, otherTopic, time.Now())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -167,15 +167,15 @@ func TestUnsubscribeTokenRejectsForgery(t *testing.T) {
 
 	// An expired token is refused even though its signature is genuine. The expiry is inside the signed
 	// payload, so it cannot be pushed forward by editing the token.
-	expired, err := env.deps.mintUnsubscribeToken(reader, topic, time.Now().Add(-unsubscribeTokenTTL-time.Hour))
+	expired, err := mintUnsubscribeToken(env.deps.UnsubscribeKey, reader, topic, time.Now().Add(-unsubscribeTokenTTL-time.Hour))
 	if err != nil {
 		t.Fatal(err)
 	}
 	expectStatus(t, post(expired), 400)
 
 	// A token minted with a different subkey — the classic confusion attack against a shared secret.
-	stranger := Deps{Store: env.store, UnsubscribeKey: []byte(strings.Repeat("z", 32))}
-	foreign, err := stranger.mintUnsubscribeToken(reader, topic, time.Now())
+	strangerKey := []byte(strings.Repeat("z", 32))
+	foreign, err := mintUnsubscribeToken(strangerKey, reader, topic, time.Now())
 	if err != nil {
 		t.Fatal(err)
 	}

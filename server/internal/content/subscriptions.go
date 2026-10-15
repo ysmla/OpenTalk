@@ -83,14 +83,14 @@ const unsubscribeTokenTTL = 180 * 24 * time.Hour
 // free-form text, no id of the notification that happened to trigger it. The signature covers those bytes,
 // so a token cannot be edited into one for another topic or another account. A version prefix is included
 // so a future format can be told apart instead of being misread as this one.
-func (d Deps) mintUnsubscribeToken(userID, topicID uint64, now time.Time) (string, error) {
-	if len(d.UnsubscribeKey) == 0 {
+func mintUnsubscribeToken(key []byte, userID, topicID uint64, now time.Time) (string, error) {
+	if len(key) == 0 {
 		return "", errors.New("unsubscribe key is not configured")
 	}
 	payload := "v1|u" + strconv.FormatUint(userID, 10) +
 		"|t" + strconv.FormatUint(topicID, 10) +
 		"|e" + strconv.FormatInt(now.Add(unsubscribeTokenTTL).Unix(), 10)
-	signature := hmac.New(sha256.New, d.UnsubscribeKey)
+	signature := hmac.New(sha256.New, key)
 	signature.Write([]byte(payload))
 	return base64.RawURLEncoding.EncodeToString([]byte(payload)) + "." +
 		base64.RawURLEncoding.EncodeToString(signature.Sum(nil)), nil
@@ -101,8 +101,8 @@ func (d Deps) mintUnsubscribeToken(userID, topicID uint64, now time.Time) (strin
 // The comparison is constant-time: a signature check that leaks where two strings first differ can be
 // walked one byte at a time. Expiry is inside the signed payload, so it cannot be extended by editing the
 // token, and a token minted with a different purpose key fails the signature rather than being interpreted.
-func (d Deps) parseUnsubscribeToken(token string, now time.Time) (userID, topicID uint64, err error) {
-	if len(d.UnsubscribeKey) == 0 {
+func parseUnsubscribeToken(key []byte, token string, now time.Time) (userID, topicID uint64, err error) {
+	if len(key) == 0 {
 		return 0, 0, ErrUnsubscribeToken
 	}
 	// Bound the input before doing any work on it: the token is attacker-supplied and arrives unauthenticated.
@@ -121,7 +121,7 @@ func (d Deps) parseUnsubscribeToken(token string, now time.Time) (userID, topicI
 	if err != nil {
 		return 0, 0, ErrUnsubscribeToken
 	}
-	expected := hmac.New(sha256.New, d.UnsubscribeKey)
+	expected := hmac.New(sha256.New, key)
 	expected.Write(payload)
 	if subtle.ConstantTimeCompare(provided, expected.Sum(nil)) != 1 {
 		return 0, 0, ErrUnsubscribeToken
@@ -275,7 +275,7 @@ func (d Deps) unsubscribeEmail(w http.ResponseWriter, r *http.Request) {
 	if !decodeJSON(w, r, &request) {
 		return
 	}
-	userID, topicID, err := d.parseUnsubscribeToken(request.Token, time.Now())
+	userID, topicID, err := parseUnsubscribeToken(d.UnsubscribeKey, request.Token, time.Now())
 	if err != nil {
 		httpapi.Fail(w, r, 400, "INVALID_TOKEN", "退订链接无效或已过期")
 		return
