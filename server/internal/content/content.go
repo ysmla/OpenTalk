@@ -112,6 +112,11 @@ func Register(mux *http.ServeMux, deps Deps) {
 	mux.Handle("POST /api/v1/admin/tags", auth.Require(deps.Sessions, true, http.HandlerFunc(deps.createTag)))
 	mux.Handle("PUT /api/v1/admin/tags/{tag_id}", auth.Require(deps.Sessions, true, http.HandlerFunc(deps.updateTag)))
 	mux.Handle("PATCH /api/v1/admin/topics/{topic_id}", auth.Require(deps.Sessions, true, http.HandlerFunc(deps.moderateTopic)))
+	// The two reveal operations. Both demand a reason and write it to the audit trail before answering; the
+	// trace response even carries the audit row's id, so a disclosure cannot happen without a record of who
+	// asked for it and why.
+	mux.Handle("POST /api/v1/admin/deleted-archives/read", auth.Require(deps.Sessions, true, http.HandlerFunc(deps.readDeletedArchive)))
+	mux.Handle("POST /api/v1/admin/anonymous-traces", auth.Require(deps.Sessions, true, http.HandlerFunc(deps.traceAnonymousAuthor)))
 	if deps.Media != nil {
 		// Public: images are embedded in public content, so the route is readable without a session. The
 		// key grants nothing on its own: the handler asks the database whether this image may be shown to

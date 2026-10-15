@@ -79,7 +79,19 @@ func (s Store) DeleteContent(ctx context.Context, in DeleteContentInput) (Deleti
 		return result, err
 	}
 	if authorID != in.ActorID {
-		return result, ErrNotContentOwner
+		// An administrator may remove content they did not write — that is what moderation needs. It is
+		// recorded twice on purpose: deleted_content_archives keeps `deleted_by`, and an audit row states what
+		// happened, because a deletion with no explanation is indistinguishable from the author's own.
+		if err := requireAdmin(ctx, tx, in.ActorID); err != nil {
+			if errors.Is(err, ErrAdminRequired) {
+				return result, ErrNotContentOwner
+			}
+			return result, err
+		}
+		if err := writeAudit(ctx, tx, in.ActorID, &in.ContentID, nil, actionAdminDelete,
+			"管理员删除他人内容 #"+formatID(in.ContentID)); err != nil {
+			return result, err
+		}
 	}
 	// Muting does not block deleting your own content: the permission table allows a muted user to manage
 	// and delete what they posted, and only forbids new or edited speech.

@@ -229,7 +229,7 @@ func TestDeleteCascade(t *testing.T) {
 		}
 	})
 
-	t.Run("非作者被拒且管理员无捷径", func(t *testing.T) {
+	t.Run("非作者被拒但管理员可删", func(t *testing.T) {
 		topic, err := env.store.CreateTopic(ctx, env.base())
 		if err != nil {
 			t.Fatal(err)
@@ -238,15 +238,29 @@ func TestDeleteCascade(t *testing.T) {
 		if _, err := env.delete(topic, other); !errors.Is(err, ErrNotContentOwner) {
 			t.Fatalf("want ErrNotContentOwner, got %v", err)
 		}
+		// A refused delete leaves the content alone; this is checked before the successful one below, because
+		// once an administrator deletes it the content is gone by design.
+		if deleted, _ := env.deleted(topic); deleted {
+			t.Fatal("a refused delete must change nothing")
+		}
 		admin := env.createUser("deleteadmin")
 		if _, err := env.db.Exec(`UPDATE users SET role='admin' WHERE id=?`, admin); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := env.delete(topic, admin); !errors.Is(err, ErrNotContentOwner) {
-			t.Fatalf("an administrator must use the moderation route, got %v", err)
+		// 2026-10-15 起管理员可以删除他人内容（B5）：这是有意的规则变更，旧的断言写成"管理员无捷径"
+		// 并被这里保留过一段时间。现在管理员走同一条删除路径，记录在归档的 deleted_by 与一条审计行里。
+		if _, err := env.delete(topic, admin); err != nil {
+			t.Fatalf("an administrator may now delete somebody else's content, got %v", err)
 		}
-		if deleted, _ := env.deleted(topic); deleted {
-			t.Fatal("a refused delete must change nothing")
+		if deleted, _ := env.deleted(topic); !deleted {
+			t.Fatal("the administrator's delete did not take effect")
+		}
+		var deletedBy uint64
+		if err := env.db.QueryRow(`SELECT deleted_by FROM deleted_content_archives WHERE content_id=?`, topic).Scan(&deletedBy); err != nil {
+			t.Fatal(err)
+		}
+		if deletedBy != admin {
+			t.Fatalf("the archive credits %d, want the administrator %d", deletedBy, admin)
 		}
 	})
 

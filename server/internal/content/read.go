@@ -701,7 +701,15 @@ func (s Store) PermissionsFor(ctx context.Context, contentID, viewerID uint64) (
 		muted = true
 	}
 	isAuthor := viewerID == authorID
-	permissions.CanDelete = isAuthor
+	// An administrator may delete content they did not write, so the flag is true for them too. Edit stays
+	// author-only: an administrator changes someone else's wording through moderation, not by rewriting it.
+	role := ""
+	if !isAuthor {
+		if err := s.DB.QueryRowContext(ctx, `SELECT role FROM users WHERE id=?`, viewerID).Scan(&role); err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return permissions, err
+		}
+	}
+	permissions.CanDelete = isAuthor || role == "admin"
 	permissions.CanEdit = isAuthor && !muted && !root.IsLocked && time.Since(createdAt) <= EditWindow
 	permissions.CanCreateAnswer = !muted && !root.IsLocked && root.IsQuestion && root.Resolution == "open"
 	permissions.CanCreateComment = !muted && !root.IsLocked && root.Resolution != "solved"

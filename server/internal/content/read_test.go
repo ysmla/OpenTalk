@@ -624,7 +624,7 @@ func TestReadContentPermissions(t *testing.T) {
 		}
 	})
 
-	t.Run("管理员没有捷径", func(t *testing.T) {
+	t.Run("管理员可删但不可代改", func(t *testing.T) {
 		admin := env.newUser("admin")
 		if _, err := env.db.Exec(`UPDATE users SET role='admin' WHERE id=?`, admin); err != nil {
 			t.Fatal(err)
@@ -634,8 +634,10 @@ func TestReadContentPermissions(t *testing.T) {
 		if err := json.Unmarshal(env.getAs("/api/v1/contents/"+itoa(question)+"/permissions", cookie).body, &permissions); err != nil {
 			t.Fatal(err)
 		}
-		if permissions.CanEdit || permissions.CanDelete || permissions.CanSetResolution {
-			t.Fatalf("an administrator was granted a shortcut: %+v", permissions)
+		// 2026-10-15 起 can_delete 对管理员为 true（B5 的规则变更）；can_edit 与解决状态仍只属于作者：
+		// 管理员通过审核手段移除内容，而不是改写别人的话或替提问者结案。
+		if permissions.CanEdit || !permissions.CanDelete || permissions.CanSetResolution {
+			t.Fatalf("administrator permissions are %+v, want delete only", permissions)
 		}
 	})
 

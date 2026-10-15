@@ -43,6 +43,7 @@ ALLOWED_IMPLEMENTED={
     '/api/v1/admin/users',
     '/api/v1/admin/boards','/api/v1/admin/boards/{board_id}','/api/v1/admin/tags','/api/v1/admin/tags/{tag_id}',
     '/api/v1/admin/topics/{topic_id}',
+    '/api/v1/admin/deleted-archives/read','/api/v1/admin/anonymous-traces',
 }
 assert {'/health','/ready'} <= implemented, sorted(implemented)
 undocumented=implemented-({'/health','/ready'}|ALLOWED_IMPLEMENTED)
