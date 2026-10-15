@@ -48,6 +48,13 @@ export function HomeView({ user, sessionReady, onLogout }: HomeViewProps) {
    <p role="status">{status === 'loading' ? '正在连接服务…' : status === 'online' ? '已连接 API，业务功能尚未上线。' : '暂时无法连接服务，请稍后重试。'}</p>
    {status === 'offline' && <button onClick={() => setAttempt(n => n + 1)}>重新连接</button>}
   </section>
+  <section aria-labelledby="topics-heading">
+   <h2 id="topics-heading">主题列表</h2>
+   <p>浏览全部板块的帖子与问题，可按板块筛选、按最新或最近活跃排序。</p>
+   <nav className="links" aria-label="主题入口">
+    <a href="#/topics">查看主题列表</a>
+   </nav>
+  </section>
   <section aria-labelledby="account-heading">
    <h2 id="account-heading">账号</h2>
    {!sessionReady && <Status>正在确认登录状态…</Status>}

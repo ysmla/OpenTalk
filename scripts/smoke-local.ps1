@@ -57,7 +57,9 @@ try {
     $page = Invoke-WebRequest 'http://127.0.0.1:15173/' -TimeoutSec 8 -UseBasicParsing
     $proxy = Invoke-WebRequest 'http://127.0.0.1:15173/health' -TimeoutSec 8 -UseBasicParsing
     $ready = Get-SmokeStatus 'http://127.0.0.1:18080/ready'
-    $missing = Get-SmokeStatus 'http://127.0.0.1:18080/api/v1/topics'
+    # A route the contract still marks planned, so the probe keeps proving that nothing is mounted there.
+    # It used to be GET /api/v1/topics; that endpoint now exists, so the probe moved to search.
+    $missing = Get-SmokeStatus 'http://127.0.0.1:18080/api/v1/search?q=is%20it%20implemented'
     # A media key that does not exist must not be distinguishable from one that may not be shown.
     $unknownMedia = Get-SmokeStatus 'http://127.0.0.1:18080/media/00000000000000000000000000000000'
     # MySQL, Redis and the schema version are all real here, so readiness must actually succeed rather

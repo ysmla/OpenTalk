@@ -13,7 +13,7 @@ button.secondary { background: transparent; color: #214f40; border: 1px solid #2
 a { color: #214f40; }
 a:focus-visible { outline: 3px solid #a57023; outline-offset: 3px; }
 nav.links { display: flex; flex-wrap: wrap; gap: 18px; align-items: center; margin-top: 16px; }
-main.page { margin: 6vh auto; }
+main.page { margin: 6vh auto; max-width: 860px; }
 main.page h1 { font-size: clamp(26px, 4vw, 34px); }
 form { display: grid; gap: 18px; max-width: 460px; margin-top: 24px; }
 .field { display: grid; gap: 6px; }
@@ -33,3 +33,69 @@ textarea { min-height: 96px; resize: vertical; }
 dl.meta { display: grid; grid-template-columns: max-content 1fr; gap: 6px 16px; margin: 0 0 24px; }
 dl.meta dt { font-size: 14px; color: #566b63; }
 dl.meta dd { margin: 0; overflow-wrap: anywhere; }
+
+/* ---- 内容侧：主题列表、主题详情、编辑器 ---- */
+button.link { background: none; color: #214f40; padding: 0; text-decoration: underline; }
+button.link[disabled] { background: none; }
+select { font: inherit; padding: 10px 12px; border: 1px solid #bfcac3; border-radius: 6px; background: #fff; color: inherit; }
+select:focus-visible { outline: 3px solid #a57023; outline-offset: 1px; }
+select:disabled { background: #ecebe4; color: #6b7a74; }
+.label { font-size: 14px; font-weight: 600; }
+.checkbox { display: flex; gap: 8px; align-items: center; font-size: 14px; }
+.checkbox input { width: auto; padding: 0; }
+.toolbar { display: flex; flex-wrap: wrap; gap: 24px; align-items: flex-end; justify-content: space-between; margin-top: 24px; }
+.toolbar .field { max-width: 220px; }
+.cards { list-style: none; margin: 24px 0 0; padding: 0; display: grid; gap: 18px; }
+.card { border: 1px solid #bfcac3; border-radius: 8px; background: #fff; padding: 16px 18px; }
+.card-title { display: inline-block; font-size: 19px; font-weight: 600; line-height: 1.4; }
+.byline { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin: 8px 0 0; font-size: 14px; color: #566b63; }
+.byline .time, .byline .hint { font-size: 13px; }
+.author.anonymous { font-style: italic; }
+.statuses { display: inline-flex; flex-wrap: wrap; gap: 8px; }
+.chip { font-size: 12px; padding: 2px 8px; border: 1px solid #bfcac3; border-radius: 999px; background: #f5f4ee; color: #1d4536; }
+.chip.solved { background: #eaf3ee; border-color: #7fa892; }
+.chip.open { background: #fbeee3; border-color: #c2703a; color: #7a3c12; }
+.chip.locked { background: #ecebe4; }
+.chip.owner { margin-left: 6px; }
+ul.tags { display: flex; flex-wrap: wrap; gap: 8px; list-style: none; margin: 10px 0 0; padding: 0; }
+ul.tags li { font-size: 13px; padding: 2px 10px; border-radius: 999px; background: #eaf3ee; color: #1d4536; }
+.topic-body, .answer { margin-top: 24px; }
+.topic-body { border-top: 1px solid #bfcac3; padding-top: 20px; }
+.answer { border-top: 1px solid #bfcac3; padding-top: 20px; }
+.answer h3 { font-size: 16px; }
+.preview { border: 1px dashed #bfcac3; border-radius: 8px; padding: 4px 18px; background: #fff; }
+.preview-title { font-size: 20px; font-weight: 600; margin: 12px 0 0; }
+ul.attachments { display: flex; flex-wrap: wrap; gap: 16px; list-style: none; margin: 16px 0 0; padding: 0; }
+ul.attachments li { display: grid; gap: 6px; max-width: 220px; }
+ul.attachments img { max-width: 100%; border: 1px solid #bfcac3; border-radius: 6px; background: #fff; }
+ul.attachments-inline { display: flex; flex-wrap: wrap; gap: 12px; list-style: none; margin: 10px 0 0; padding: 0; }
+ul.attachments-inline img { max-width: 180px; border: 1px solid #bfcac3; border-radius: 6px; background: #fff; }
+.uploader { display: grid; gap: 12px; }
+.dropzone { border: 2px dashed #bfcac3; border-radius: 8px; padding: 18px; background: #fff; display: grid; gap: 10px; }
+.dropzone.dragging { border-color: #214f40; background: #eaf3ee; }
+.dropzone p { margin: 0; }
+ul.tag-picker { display: flex; flex-wrap: wrap; gap: 14px; list-style: none; margin: 6px 0 0; padding: 0; }
+ul.comments, ul.replies { list-style: none; margin: 16px 0 0; padding: 0; display: grid; gap: 16px; }
+ul.replies { margin: 12px 0 0 24px; padding-left: 16px; border-left: 2px solid #bfcac3; }
+.comment { border: 1px solid #e2e6e2; border-radius: 8px; padding: 12px 14px; background: #fff; }
+.comment.reply { background: #fbfbf7; }
+.comment-actions { margin-top: 6px; }
+.reply-to { display: block; font-size: 13px; color: #566b63; margin-bottom: 4px; }
+.composer { border: 1px solid #bfcac3; border-radius: 8px; padding: 16px 18px; background: #fff; margin-top: 24px; max-width: none; }
+.composer h3 { margin-top: 0; font-size: 16px; }
+
+/*
+ * Rendered user Markdown. Styling only: the security decisions live in
+ * web/src/lib/markdown.ts, which mirrors server/internal/markdown/markdown.go.
+ */
+.markdown { line-height: 1.8; overflow-wrap: anywhere; }
+.markdown > :first-child { margin-top: 0; }
+.markdown > :last-child { margin-bottom: 0; }
+.markdown h1, .markdown h2, .markdown h3, .markdown h4 { font-size: 1.15em; line-height: 1.4; }
+.markdown pre { overflow-x: auto; padding: 12px; border-radius: 6px; background: #ecebe4; }
+.markdown code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .95em; }
+.markdown :not(pre) > code { padding: 1px 5px; border-radius: 4px; background: #ecebe4; }
+.markdown blockquote { margin: 12px 0; padding: 2px 16px; border-left: 3px solid #bfcac3; color: #566b63; }
+.markdown table { border-collapse: collapse; }
+.markdown th, .markdown td { border: 1px solid #bfcac3; padding: 6px 10px; }
+.markdown img { max-width: 100%; border-radius: 6px; }

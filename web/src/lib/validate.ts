@@ -52,3 +52,33 @@ export function captchaAnswerProblem(value: string): string | undefined {
  if (!value.trim()) return '请填写图形验证码。';
  return undefined;
 }
+
+// 内容侧的限制，与服务端 server/internal/markdown 及内容接口的规则一致：
+// 标题为单行纯文本，正文是 Markdown 原文，标签每篇最多 5 个。
+export const TITLE_MAX = 120;
+export const BODY_MAX = 20000;
+export const TAGS_MAX = 5;
+
+/** The server trims a title before storing it, so the count must trim too. */
+export function titleProblem(value: string): string | undefined {
+ const title = value.trim();
+ if (!title) return '请填写标题。';
+ if (charCount(title) > TITLE_MAX) return `标题最多 ${TITLE_MAX} 个字符（当前 ${charCount(title)}）。`;
+ for (const character of title) {
+  const code = character.codePointAt(0) ?? 0;
+  if (code < 0x20 || code === 0x7f) return '标题必须是单行纯文本，不能包含换行或控制字符。';
+ }
+ return undefined;
+}
+
+/** The server stores the body unchanged, so only emptiness looks at the trim. */
+export function bodyProblem(value: string): string | undefined {
+ if (!value.trim()) return '请填写正文。';
+ if (charCount(value) > BODY_MAX) return `正文最多 ${BODY_MAX} 个字符（当前 ${charCount(value)}）。`;
+ return undefined;
+}
+
+export function tagCountProblem(count: number): string | undefined {
+ if (count > TAGS_MAX) return `每篇最多选择 ${TAGS_MAX} 个标签（当前 ${count} 个）。`;
+ return undefined;
+}
