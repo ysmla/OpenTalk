@@ -10,6 +10,7 @@ import { LoginView } from './views/LoginView';
 import { ProfileView } from './views/ProfileView';
 import { RegisterView } from './views/RegisterView';
 import { ResetPasswordView } from './views/ResetPasswordView';
+import { AdminModerationView } from './views/AdminModerationView';
 import { MyReportsView } from './views/MyReportsView';
 import { SearchView } from './views/SearchView';
 import { TopicDetailView } from './views/TopicDetailView';
@@ -177,6 +178,13 @@ export function App() {
    return <MyReportsView
     sessionReady={sessionReady}
     signedIn={user !== undefined}
+    onUnauthenticated={handleUnauthenticated}
+   />;
+  case 'admin-moderation':
+   return <AdminModerationView
+    sessionReady={sessionReady}
+    signedIn={user !== undefined}
+    isAdmin={user?.role === 'admin'}
     onUnauthenticated={handleUnauthenticated}
    />;
   default:

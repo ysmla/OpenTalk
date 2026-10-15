@@ -127,6 +127,7 @@ export function ProfileView({ user, onUserChange, onUnauthenticated }: ProfileVi
    <p>当前账号具有管理员权限，可以修改站点设置。改动会写入审计日志。</p>
    <nav className="links" aria-label="管理员入口">
     <a href="#/admin">进入后台管理</a>
+    <a href="#/admin/moderation">审核与举报</a>
    </nav>
   </section>}
   <section aria-labelledby="my-reports-heading">

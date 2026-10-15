@@ -13,6 +13,7 @@ export type RouteLocation =
  | { name: 'me' }
  | { name: 'me-reports' }
  | { name: 'admin' }
+ | { name: 'admin-moderation' }
  | { name: 'topics' }
  | { name: 'board'; id: string }
  | { name: 'tag'; id: string }
@@ -24,7 +25,7 @@ export type RouteLocation =
 export type RouteName = RouteLocation['name'];
 
 /** The nine legacy names plus the topic list, all of which carry no argument. */
-export type Route = 'home' | 'login' | 'register' | 'reset' | 'me' | 'me-reports' | 'admin' | 'topics';
+export type Route = 'home' | 'login' | 'register' | 'reset' | 'me' | 'me-reports' | 'admin' | 'admin-moderation' | 'topics';
 
 const STATIC_ROUTES: Record<string, Route> = {
  login: 'login',
@@ -40,6 +41,8 @@ const STATIC_ROUTES: Record<string, Route> = {
  'topics/list': 'topics',
  // The admin settings screen is reachable under either spelling.
  'admin/settings': 'admin',
+ // Moderation is its own screen: it is a work queue, not a setting.
+ 'admin/moderation': 'admin-moderation',
 };
 
 /** Route names that are only meaningful with an id appended. */
@@ -133,6 +136,7 @@ export function routeHref(location: RouteLocation): string {
   case 'topics': return '#/topics';
   case 'me': return '#/me';
   case 'me-reports': return '#/me/reports';
+  case 'admin-moderation': return '#/admin/moderation';
   case 'new':
    return location.boardId ? `#/new?board_id=${encodeURIComponent(location.boardId)}` : '#/new';
   case 'search': {
