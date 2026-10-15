@@ -13,6 +13,8 @@ export type RouteLocation =
  | { name: 'me' }
  | { name: 'me-reports' }
  | { name: 'me-notifications' }
+ | { name: 'me-contents' }
+ | { name: 'user'; id: string }
  | { name: 'admin' }
  | { name: 'admin-moderation' }
  | { name: 'topics' }
@@ -26,7 +28,7 @@ export type RouteLocation =
 export type RouteName = RouteLocation['name'];
 
 /** The nine legacy names plus the topic list, all of which carry no argument. */
-export type Route = 'home' | 'login' | 'register' | 'reset' | 'me' | 'me-reports' | 'me-notifications' | 'admin' | 'admin-moderation' | 'topics';
+export type Route = 'home' | 'login' | 'register' | 'reset' | 'me' | 'me-reports' | 'me-notifications' | 'me-contents' | 'admin' | 'admin-moderation' | 'topics';
 
 const STATIC_ROUTES: Record<string, Route> = {
  login: 'login',
@@ -37,6 +39,8 @@ const STATIC_ROUTES: Record<string, Route> = {
  'me/reports': 'me-reports',
  // In-site notifications have their own screen too: they are a feed, not a setting.
  'me/notifications': 'me-notifications',
+ // The reader's own content, anonymous posts included.
+ 'me/contents': 'me-contents',
  home: 'home',
  admin: 'admin',
  // Aliases for the home screen's topic list.
@@ -92,6 +96,10 @@ export function parseHash(hash: string): RouteLocation {
   const boardId = (segments[1] ?? query.get('board_id') ?? '').trim();
   return boardId ? { name: 'new', boardId } : { name: 'new' };
  }
+ if (segments[0] === 'user' && segments[1] !== undefined) {
+  // A public profile is addressed by the account's public id, which is what other payloads already carry.
+  return { name: 'user', id: segments[1] };
+ }
  // Search keeps its term in the query string so a result page can be linked and reloaded. The term is
  // never an identity or a token: it is the reader's own words.
  if (segments[0] === 'search') {
@@ -140,6 +148,7 @@ export function routeHref(location: RouteLocation): string {
   case 'me': return '#/me';
   case 'me-reports': return '#/me/reports';
   case 'me-notifications': return '#/me/notifications';
+  case 'me-contents': return '#/me/contents';
   case 'admin-moderation': return '#/admin/moderation';
   case 'new':
    return location.boardId ? `#/new?board_id=${encodeURIComponent(location.boardId)}` : '#/new';
@@ -155,6 +164,7 @@ export function routeHref(location: RouteLocation): string {
   case 'board': return `#/board/${encodeURIComponent(location.id)}`;
   case 'tag': return `#/tag/${encodeURIComponent(location.id)}`;
   case 'topic': return `#/topic/${encodeURIComponent(location.id)}`;
+  case 'user': return `#/user/${encodeURIComponent(location.id)}`;
   case 'edit': return `#/edit/${encodeURIComponent(location.id)}`;
   default: return `#/${location.name}`;
  }

@@ -130,6 +130,13 @@ export function ProfileView({ user, onUserChange, onUnauthenticated }: ProfileVi
     <a href="#/admin/moderation">审核与举报</a>
    </nav>
   </section>}
+  <section aria-labelledby="my-contents-heading">
+   <h2 id="my-contents-heading">我的内容</h2>
+   <p>我发布的帖子、回答与评论；我自己的匿名帖也会列在那里，并仍以匿名身份展示。</p>
+   <nav className="links" aria-label="我的内容">
+    <a href="#/me/contents">查看我的内容</a>
+   </nav>
+  </section>
   <section aria-labelledby="my-notifications-heading">
    <h2 id="my-notifications-heading">通知</h2>
    <p>别人回复你、回答你的提问或你的举报有结果时的站内通知；与邮件通知是两件事。</p>
