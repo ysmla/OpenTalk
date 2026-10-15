@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { createComment, deleteContent, listComments, type Comment } from '../api/content';
 import { Alert, Status } from '../components/Alert';
 import { CommentComposer, CommentList } from '../components/CommentThread';
+import { ImageUploader, type UploadItem } from '../components/ImageUploader';
 import { useCursorList } from '../hooks/useCursorList';
 import { describeError, isStatus, type Failure } from '../lib/messages';
 import { contentActions, type Viewer } from '../lib/ownership';
@@ -69,6 +70,7 @@ export function CommentsSection({ topicId, answerId, canComment, closed, topicIs
  /** Ids removed locally, so a delete does not have to refetch and lose the pages already read. */
  const [deletedIds, setDeletedIds] = useState<string[]>([]);
  const [draft, setDraft] = useState('');
+ const [images, setImages] = useState<UploadItem[]>([]);
  const [target, setTarget] = useState<Comment>();
  const [posting, setPosting] = useState(false);
  const [postFailure, setPostFailure] = useState<Failure>();
@@ -165,6 +167,20 @@ export function CommentsSection({ topicId, answerId, canComment, closed, topicIs
   }
  }
 
+ /**
+  * Insert a freshly uploaded image into the draft as its own paragraph.
+  *
+  * The same rule the topic editor follows, for the same reason: Markdown keeps
+  * consecutive lines in one paragraph, so an image appended straight after a line of
+  * text shares that paragraph's line box and the text ends up looking buried under
+  * the picture. The image is also attached through `attachment_ids` on submit, so it
+  * shows even if the author edits the text and removes the markup.
+  */
+ function insertUploadedImage(item: UploadItem) {
+  const markup = `![${item.name}](${item.attachment.url})`;
+  setDraft(current => (current.trim() === '' ? `${markup}\n` : `${current.replace(/\s+$/, '')}\n\n${markup}\n`));
+ }
+
  async function handleSubmit() {
   if (posting || draft.trim() === '') return;
   setPosting(true);
@@ -177,6 +193,9 @@ export function CommentsSection({ topicId, answerId, canComment, closed, topicIs
     ...(target === undefined ? {} : { reply_to_comment_id: target.id }),
     body_md: draft,
     is_anonymous: forceAnonymous === true,
+    // The images already uploaded for this comment. They are associated in the same transaction as the
+    // comment, which is also what turns them from "pending" into attached content.
+    ...(images.length === 0 ? {} : { attachment_ids: images.map(item => item.attachment.id) }),
    });
    // Show the new comment through the server's own answer rather than guessing where it lands: the
    // server decides the display root, so a reply joins its thread and a top-level comment joins the list.
@@ -190,6 +209,7 @@ export function CommentsSection({ topicId, answerId, canComment, closed, topicIs
     });
    }
    setDraft('');
+   setImages([]);
    setNotice(target === undefined ? '评论已发布。' : '回复已发布。');
    setTarget(undefined);
   } catch (error) {
@@ -244,7 +264,14 @@ export function CommentsSection({ topicId, answerId, canComment, closed, topicIs
   </div>}
 
   {canComment
-   ? <CommentComposer
+   ? <>
+    <ImageUploader
+     images={images}
+     onChange={setImages}
+     disabled={posting}
+     onUploaded={insertUploadedImage}
+    />
+    <CommentComposer
     label={target ? '回复' : '发表评论'}
     target={target}
     value={draft}
@@ -257,7 +284,8 @@ export function CommentsSection({ topicId, answerId, canComment, closed, topicIs
      ? '你在此主题下发言会被强制匿名，展示为楼主或匿名编号。'
      : '支持 Markdown：原始 HTML 会被转义，链接只允许 http、https 与 mailto。'}
     submitLabel={target ? '发布回复' : '发布评论'}
-   />
+    />
+   </>
    : <p className="hint">{closed
     ? '主题已锁定或问题已解决，暂时不能新增评论或回复。'
     : signedIn ? '当前账号暂时不能发表评论。' : '登录后可以参与讨论。'}</p>}

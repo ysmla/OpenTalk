@@ -2,6 +2,7 @@ import type { components } from '../api/generated';
 import { Alert } from './Alert';
 import { authorLabel, replyTargetLabel } from './ContentMeta';
 import { Markdown } from './Markdown';
+import { unreferencedAttachments } from '../lib/attachments';
 import { formatDateTime } from '../lib/format';
 import type { Failure } from '../lib/messages';
 
@@ -135,6 +136,8 @@ function ReplyTarget({ comment, authors }: { comment: Comment; authors: Map<stri
 function CommentBody({ comment }: { comment: Comment }) {
  const createdAt = formatDateTime(comment.created_at);
  const editedAt = formatDateTime(comment.edited_at);
+ // An image the body already embeds is not repeated in the strip below it.
+ const rest = unreferencedAttachments(comment.body_md, comment.attachments);
  return <>
   <p className="byline">
    {authorLabel(comment.author)}
@@ -142,8 +145,8 @@ function CommentBody({ comment }: { comment: Comment }) {
    {editedAt && <span className="hint">已编辑 {editedAt}</span>}
   </p>
   <Markdown source={comment.body_md} />
-  {comment.attachments.length > 0 && <ul className="attachments-inline">
-   {comment.attachments.map(attachment => <li key={attachment.id}>
+  {rest.length > 0 && <ul className="attachments-inline">
+   {rest.map(attachment => <li key={attachment.id}>
     <img src={attachment.url} alt="评论附带的图片" loading="lazy" />
    </li>)}
   </ul>}

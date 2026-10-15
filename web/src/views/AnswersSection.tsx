@@ -222,6 +222,6 @@ function AnswerBody({ answer }: { answer: Answer }) {
    {editedAt && <span className="hint">已编辑 {editedAt}</span>}
   </p>
   <Markdown source={answer.body_md} />
-  <AttachmentGallery attachments={answer.attachments} />
+  <AttachmentGallery attachments={answer.attachments} bodyMd={answer.body_md} />
  </>;
 }

@@ -196,7 +196,7 @@ export function TopicDetailView({ topicId, user, sessionReady, onUnauthenticated
 
   <article className="topic-body">
    <Markdown source={topic.body_md} />
-   <AttachmentGallery attachments={topic.attachments} />
+   <AttachmentGallery attachments={topic.attachments} bodyMd={topic.body_md} />
   </article>
 
   <div className="actions">
