@@ -88,6 +88,12 @@ func (s Store) DeleteContent(ctx context.Context, in DeleteContentInput) (Deleti
 	if err != nil {
 		return result, err
 	}
+	// requirements 42: deletion has to take effect on what has not been sent yet, immediately and without
+	// waiting for the cleanup task. A queued announcement of content that is gone has nothing left to say,
+	// so it is voided here, in the same transaction that removes the content.
+	if err := voidPendingNotifications(ctx, tx, ids); err != nil {
+		return result, err
+	}
 	// One timestamp for the whole cascade, so every archived row shares a deleted_at and the derived
 	// purge_after satisfies the table's CHECK exactly.
 	now := time.Now().UTC().Truncate(time.Microsecond)

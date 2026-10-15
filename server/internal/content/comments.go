@@ -64,11 +64,15 @@ func (s Store) CreateComment(ctx context.Context, in NewComment) (uint64, error)
 		}
 	}
 	var parent, replyTo any
+	// The author of the comment being answered, when this is a reply: the notification for a reply goes to
+	// them, so the id has to survive the block that reads the target.
+	var targetAuthor uint64
 	if in.ReplyToCommentID != 0 {
 		target, err := loadReplyTarget(ctx, tx, in.ReplyToCommentID, in.TopicID)
 		if err != nil {
 			return 0, err
 		}
+		targetAuthor = target.AuthorID
 		// 不能跨目标回复: a reply must stay under the same answer as the comment it answers. Both
 		// directions matter, so a topic-level comment cannot answer an answer-level one and vice versa.
 		if !sameAnswer(target.AnswerID, in.AnswerID) {
@@ -132,10 +136,52 @@ func (s Store) CreateComment(ctx context.Context, in NewComment) (uint64, error)
 		in.TopicID); err != nil {
 		return 0, err
 	}
+	// Who hears about this comment is the person it addresses, and only them: the author of the comment
+	// being answered, otherwise the author of the answer it hangs from, otherwise the topic author. Each
+	// level already told its own author about the content below it, so notifying the whole chain here would
+	// send the same reader several messages for one reply. The actor is filtered out inside.
+	recipients, err := commentRecipients(ctx, tx, root.AuthorID, in, targetAuthor)
+	if err != nil {
+		return 0, err
+	}
+	eventType := eventNewComment
+	if in.ReplyToCommentID != 0 {
+		eventType = eventNewReply
+	}
+	if err := notifyRecipients(ctx, tx, eventType, contentID, in.AuthorID, recipients); err != nil {
+		return 0, err
+	}
 	if err := tx.Commit(); err != nil {
 		return 0, err
 	}
 	return contentID, nil
+}
+
+// commentRecipients picks the one person a comment or reply addresses.
+func commentRecipients(ctx context.Context, tx *sql.Tx, topicAuthorID uint64, in NewComment, replyTargetAuthor uint64) ([]uint64, error) {
+	switch {
+	case in.ReplyToCommentID != 0:
+		return []uint64{replyTargetAuthor}, nil
+	case in.AnswerID != 0:
+		author, err := contentAuthor(ctx, tx, in.AnswerID)
+		if err != nil {
+			return nil, err
+		}
+		return []uint64{author}, nil
+	default:
+		return []uint64{topicAuthorID}, nil
+	}
+}
+
+// contentAuthor reads the account behind one content row. It is used for notification routing only, and
+// never leaves the server: what the recipient sees is the anonymous or named author the payload rules
+// allow, not this id.
+func contentAuthor(ctx context.Context, q queryer, contentID uint64) (uint64, error) {
+	var author uint64
+	if err := q.QueryRowContext(ctx, `SELECT author_id FROM contents WHERE id=?`, contentID).Scan(&author); err != nil {
+		return 0, err
+	}
+	return author, nil
 }
 
 // answerBelongsToTopic reports whether an answer is reachable inside a specific topic: the shared
@@ -154,10 +200,12 @@ func answerBelongsToTopic(ctx context.Context, tx *sql.Tx, answerID, topicID uin
 	return belongs, err
 }
 
-// replyTarget is what a reply needs to know about the comment it answers.
+// replyTarget is what a reply needs to know about the comment it answers. The author is carried so the
+// reply can notify them: the notification goes to the person being answered, not to everyone above them.
 type replyTarget struct {
 	AnswerID sql.NullInt64
 	ParentID sql.NullInt64
+	AuthorID uint64
 }
 
 // loadReplyTarget reads the comment a reply answers. A hidden or deleted target — or one whose own
@@ -171,9 +219,10 @@ func loadReplyTarget(ctx context.Context, tx *sql.Tx, commentID, topicID uint64)
 		}
 		return target, err
 	}
-	err := tx.QueryRowContext(ctx, `SELECT answer_id,parent_comment_id
-FROM comments WHERE content_id=? AND topic_id=?`,
-		commentID, topicID).Scan(&target.AnswerID, &target.ParentID)
+	err := tx.QueryRowContext(ctx, `SELECT cm.answer_id,cm.parent_comment_id,c.author_id
+FROM comments cm JOIN contents c ON c.id=cm.content_id
+WHERE cm.content_id=? AND cm.topic_id=?`,
+		commentID, topicID).Scan(&target.AnswerID, &target.ParentID, &target.AuthorID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return target, ErrReplyTarget
 	}

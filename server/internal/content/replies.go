@@ -229,6 +229,10 @@ func (s Store) CreateAnswer(ctx context.Context, in NewAnswer) (uint64, error) {
 		in.TopicID); err != nil {
 		return 0, err
 	}
+	// The asker hears about the answer unless they wrote it; the actor is filtered inside.
+	if err := notifyRecipients(ctx, tx, eventNewAnswer, contentID, in.AuthorID, []uint64{root.AuthorID}); err != nil {
+		return 0, err
+	}
 	if err := tx.Commit(); err != nil {
 		return 0, err
 	}
