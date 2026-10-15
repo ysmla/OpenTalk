@@ -241,8 +241,12 @@ type AnswerView struct {
 	Attachments      []Attachment
 }
 
-// AnswerByContentID assembles one visible answer.
+// AnswerByContentID assembles one answer. Visibility is the shared ancestor rule, so an answer whose
+// question is hidden or deleted is reported as not found even though its own row says 'visible'.
 func (s Store) AnswerByContentID(ctx context.Context, contentID uint64) (AnswerView, error) {
+	if err := requireVisible(ctx, s.DB, contentID); err != nil {
+		return AnswerView{}, err
+	}
 	var view AnswerView
 	var avatarKey sql.NullString
 	var anonymousNumber sql.NullInt64
@@ -256,7 +260,7 @@ JOIN contents tc ON tc.id=a.question_id
 JOIN users u ON u.id=c.author_id
 LEFT JOIN attachments av ON av.id=u.avatar_attachment_id AND av.status IN ('pending','active')
 LEFT JOIN anonymous_identities ai ON ai.id=c.anonymous_identity_id
-WHERE c.id=? AND c.deleted_at IS NULL AND c.moderation_status='visible'`, contentID).
+WHERE c.id=?`, contentID).
 		Scan(&view.ContentID, &view.AuthorID, &view.BodyMD, &view.IsAnonymous, &view.CreatedAt, &view.EditedAt,
 			&view.TopicID, &view.TopicAuthorID, &view.TopicIsAnonymous,
 			&view.AuthorPublicID, &view.AuthorNickname, &view.AuthorCreatedAt, &avatarKey, &anonymousNumber)

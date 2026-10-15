@@ -62,21 +62,21 @@ func (s Store) DeleteContent(ctx context.Context, in DeleteContentInput) (Deleti
 
 	var kind string
 	var authorID uint64
-	var deletedAt sql.NullTime
-	var moderation string
 	err = tx.QueryRowContext(ctx,
-		`SELECT kind,author_id,deleted_at,moderation_status FROM contents WHERE id=?`, in.ContentID).
-		Scan(&kind, &authorID, &deletedAt, &moderation)
+		`SELECT kind,author_id FROM contents WHERE id=?`, in.ContentID).
+		Scan(&kind, &authorID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return result, ErrContentNotFound
 	}
 	if err != nil {
 		return result, err
 	}
-	// Deleting something already deleted is reported as missing: the second attempt has nothing to act on,
-	// and saying "already deleted" would confirm that removed content once existed.
-	if deletedAt.Valid || moderation != "visible" {
-		return result, ErrContentNotFound
+	// Deleting something already deleted or hidden is reported as missing: there is nothing left to act
+	// on, and saying "already removed" would confirm that removed content once existed. The same shared
+	// ancestor rule decides it, so a hidden answer is as unreachable for its author as it is for a reader
+	// — deletion is not a way back into content a moderator took down.
+	if err := requireVisible(ctx, tx, in.ContentID); err != nil {
+		return result, err
 	}
 	if authorID != in.ActorID {
 		return result, ErrNotContentOwner
@@ -175,8 +175,8 @@ SELECT content_id FROM descendants`, contentID)
 	return dedupe(ids), nil
 }
 
-func collectIDs(ctx context.Context, tx *sql.Tx, query string, args ...any) ([]uint64, error) {
-	rows, err := tx.QueryContext(ctx, query, args...)
+func collectIDs(ctx context.Context, q queryer, query string, args ...any) ([]uint64, error) {
+	rows, err := q.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}

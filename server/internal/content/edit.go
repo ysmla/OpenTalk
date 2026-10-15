@@ -39,9 +39,9 @@ type EditContentInput struct {
 // EditContent updates the body of the author's own content, and optionally the title of a topic and the
 // set of attached images.
 //
-// The three permissions that apply here are deliberately separate checks: ownership, the 30-minute
-// window, and the locked-topic rule. Authorization is not a moderation action, so an administrator gets
-// no shortcut through them.
+// The four permissions that apply here are deliberately separate checks: visibility, ownership, the
+// 30-minute window, and the locked-topic rule. Authorization is not a moderation action, so an
+// administrator gets no shortcut through them.
 func (s Store) EditContent(ctx context.Context, in EditContentInput) error {
 	tx, err := s.DB.BeginTx(ctx, nil)
 	if err != nil {
@@ -59,6 +59,8 @@ func (s Store) EditContent(ctx context.Context, in EditContentInput) error {
 	if err != nil {
 		return err
 	}
+	// A hidden or deleted root makes the target unreachable. It is reported as missing content rather
+	// than as a missing topic, because from the reader's side the content is what disappeared.
 	if root.Deleted || root.Hidden {
 		return ErrContentNotFound
 	}
@@ -66,20 +68,20 @@ func (s Store) EditContent(ctx context.Context, in EditContentInput) error {
 	var kind string
 	var authorID uint64
 	var createdAt time.Time
-	var deletedAt sql.NullTime
-	var moderation string
 	err = tx.QueryRowContext(ctx,
-		`SELECT kind,author_id,created_at,deleted_at,moderation_status FROM contents WHERE id=?`, in.ContentID).
-		Scan(&kind, &authorID, &createdAt, &deletedAt, &moderation)
+		`SELECT kind,author_id,created_at FROM contents WHERE id=?`, in.ContentID).
+		Scan(&kind, &authorID, &createdAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return ErrContentNotFound
 	}
 	if err != nil {
 		return err
 	}
-	// A row deleted between locating the root and taking the lock must be reported as missing, not edited.
-	if deletedAt.Valid || moderation != "visible" {
-		return ErrContentNotFound
+	// Visibility is the shared ancestor-chain rule, checked after the lock so a row hidden between
+	// locating the root and taking the lock is refused rather than edited. Checking the target row and
+	// the root separately was the bug: it left a hidden answer editable inside a visible question.
+	if err := requireVisible(ctx, tx, in.ContentID); err != nil {
+		return err
 	}
 	if authorID != in.ActorID {
 		return ErrNotContentOwner
@@ -137,37 +139,17 @@ func (s Store) EditContent(ctx context.Context, in EditContentInput) error {
 	return tx.Commit()
 }
 
-// rootTopicOf finds the discussion a content row belongs to: itself for a topic, the question for an
-// answer, and the topic for a comment.
-func (s Store) rootTopicOf(ctx context.Context, contentID uint64) (uint64, error) {
-	var rootID sql.NullInt64
-	err := s.DB.QueryRowContext(ctx, `
-SELECT COALESCE(t.content_id,a.question_id,cm.topic_id)
-FROM contents c
-LEFT JOIN topics t ON t.content_id=c.id
-LEFT JOIN answers a ON a.content_id=c.id
-LEFT JOIN comments cm ON cm.content_id=c.id
-WHERE c.id=?`, contentID).Scan(&rootID)
-	if errors.Is(err, sql.ErrNoRows) {
-		return 0, ErrContentNotFound
-	}
-	if err != nil {
-		return 0, err
-	}
-	if !rootID.Valid {
-		// The row exists but belongs to no discussion, which means the schema is inconsistent.
-		return 0, ErrContentNotFound
-	}
-	return uint64(rootID.Int64), nil
-}
-
-// PublicContentByID reads one visible content row and returns the response for its kind, so a caller
-// does not have to know whether an id names a topic, an answer or a comment.
+// PublicContentByID reads one content row and returns the response for its kind, so a caller does not
+// have to know whether an id names a topic, an answer or a comment.
+//
+// Visibility is resolved before the kind is trusted, so a hidden or deleted row — or one whose ancestor
+// chain is broken — reports the same not-found as an id that was never issued.
 func (s Store) PublicContentByID(ctx context.Context, contentID uint64) (any, error) {
+	if err := requireVisible(ctx, s.DB, contentID); err != nil {
+		return nil, err
+	}
 	var kind string
-	err := s.DB.QueryRowContext(ctx,
-		`SELECT kind FROM contents WHERE id=? AND deleted_at IS NULL AND moderation_status='visible'`, contentID).
-		Scan(&kind)
+	err := s.DB.QueryRowContext(ctx, `SELECT kind FROM contents WHERE id=?`, contentID).Scan(&kind)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrContentNotFound
 	}

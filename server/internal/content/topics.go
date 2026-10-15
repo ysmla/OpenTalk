@@ -255,9 +255,16 @@ type Attachment struct {
 	ByteSize int64
 }
 
-// TopicByContentID assembles one visible topic. Hidden or deleted content is reported as not found so
-// the caller cannot use this endpoint to probe for removed material.
+// TopicByContentID assembles one reachable topic. Hidden or deleted content is reported as not found so
+// the caller cannot use this endpoint to probe for removed material. A topic is its own ancestor, so the
+// shared rule reduces to this one row here, but it is still the shared rule rather than a copy of it.
 func (s Store) TopicByContentID(ctx context.Context, contentID uint64) (TopicView, error) {
+	if err := requireVisible(ctx, s.DB, contentID); err != nil {
+		if errors.Is(err, ErrContentNotFound) {
+			return TopicView{}, ErrTopicNotFound
+		}
+		return TopicView{}, err
+	}
 	var view TopicView
 	var avatarKey sql.NullString
 	var anonymousNumber sql.NullInt64
@@ -273,7 +280,7 @@ JOIN users u ON u.id=c.author_id
 LEFT JOIN attachments a ON a.id=u.avatar_attachment_id AND a.status IN ('pending','active')
 LEFT JOIN anonymous_identities ai ON ai.id=c.anonymous_identity_id
 LEFT JOIN questions q ON q.topic_id=c.id
-WHERE c.id=? AND c.deleted_at IS NULL AND c.moderation_status='visible'`, contentID).
+WHERE c.id=?`, contentID).
 		Scan(&view.ContentID, &view.AuthorID, &view.BodyMD, &view.IsAnonymous, &view.CreatedAt, &view.EditedAt,
 			&view.BoardID, &view.BoardKind, &view.Title, &view.IsLocked, &view.IsPinned, &view.LastActivityAt,
 			&view.AuthorPublicID, &view.AuthorNickname, &view.AuthorCreatedAt, &avatarKey, &anonymousNumber,

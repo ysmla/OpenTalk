@@ -136,17 +136,21 @@ func (s Store) attachmentReadable(ctx context.Context, key string) (bool, string
 //   - An active image is published, so it is readable while the content that shows it is still visible.
 //     That means the whole ancestor chain, not just the row that references the image: an answer or a
 //     comment is shown inside its topic, so hiding or deleting the root topic has to hide the image too,
-//     even though the answer row itself is still 'visible'. For an answer or a comment the innermost
-//     topic join below resolves the root, which makes one predicate cover every kind of content.
+//     even though the answer row itself is still 'visible'.
+//   - The chain has to be walked to its end, not sampled at its root. A comment on a hidden answer is
+//     never displayed, because the whole answer is gone from the page; moderation stops there, so the
+//     comment image must stop being served even though the root question is still public. Checking only
+//     the root would serve exactly the material an administrator had just removed.
 func (s Store) attachmentReadableFor(ctx context.Context, key string, viewerID uint64) (bool, string, error) {
+	var attachmentID uint64
 	var mimeType string
 	var status string
 	var ownerID uint64
 	var expired bool
-	err := s.DB.QueryRowContext(ctx, `SELECT mime_type,status,owner_id,
+	err := s.DB.QueryRowContext(ctx, `SELECT id,mime_type,status,owner_id,
  COALESCE(delete_after IS NOT NULL AND delete_after<=UTC_TIMESTAMP(6), FALSE)
 FROM attachments WHERE storage_key=? AND status IN ('pending','active')`, key).
-		Scan(&mimeType, &status, &ownerID, &expired)
+		Scan(&attachmentID, &mimeType, &status, &ownerID, &expired)
 	if errors.Is(err, sql.ErrNoRows) {
 		return false, "", nil
 	}
@@ -156,27 +160,35 @@ FROM attachments WHERE storage_key=? AND status IN ('pending','active')`, key).
 	if status == "pending" {
 		return !expired && viewerID != 0 && viewerID == ownerID, mimeType, nil
 	}
-	// Active means it was attached to something, so at least one referencing content row must still be
-	// reachable through a fully visible chain.
+	// Active means it was attached to something, and an image is served while at least one content row
+	// showing it is reachable — reachable meaning the whole ancestor graph above it is undeleted and
+	// unmoderated, which is the rule in visibility.go.
 	//
-	// The referencing row is identified first and its ancestor is resolved from it. Only one of the three
-	// tables can match, so their three joins are LEFT joins and the non-null one names the root. Joining
-	// topics first and then the others would be wrong: a topic join on an answer row finds nothing, and
-	// the answer's image would be refused even while the whole discussion is public.
-	var visible bool
-	if err := s.DB.QueryRowContext(ctx, `SELECT EXISTS(
- SELECT 1 FROM content_attachments ca
- JOIN contents c ON c.id=ca.content_id
- LEFT JOIN topics t ON t.content_id=c.id
- LEFT JOIN answers a ON a.content_id=c.id
- LEFT JOIN comments m ON m.content_id=c.id
- JOIN contents root ON root.id=COALESCE(t.content_id,a.question_id,m.topic_id)
- WHERE ca.attachment_id=(SELECT id FROM attachments WHERE storage_key=?)
- AND c.deleted_at IS NULL AND c.moderation_status='visible'
- AND root.deleted_at IS NULL AND root.moderation_status='visible')`, key).Scan(&visible); err != nil {
+	// That rule is asked rather than re-implemented. The two used to be separate SQL predicates that had to
+	// "stay equivalent" by inspection, and they did not: the image side picked one ancestor per row, so a
+	// hidden thread root under a still-public answer left the reply's image public, and it pooled every
+	// reference into one chain, so a hidden ancestor of one reference denied an image another public
+	// reference still showed. Both were the copy drifting from the rule, not the rule being wrong.
+	//
+	// So the store answers *all* the questions at once. Every referencing row is looked up, the shared walk
+	// decides which of them are reachable, and "at least one reachable reference" is the OR of those
+	// answers. A reference whose own row is hidden, or whose ancestor anywhere above it is hidden or
+	// deleted, contributes nothing — and its failure cannot reach the other references, because each one
+	// was asked about its own chain.
+	references, err := collectIDs(ctx, s.DB, `SELECT content_id FROM content_attachments WHERE attachment_id=?`, attachmentID)
+	if err != nil {
 		return false, "", err
 	}
-	return visible, mimeType, nil
+	reachable, err := visibleContentIDs(ctx, s.DB, references)
+	if err != nil {
+		return false, "", err
+	}
+	for _, reference := range references {
+		if reachable[reference] {
+			return true, mimeType, nil
+		}
+	}
+	return false, mimeType, nil
 }
 
 // getImage serves one stored image. The route is public because images are embedded in public content,

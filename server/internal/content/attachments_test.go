@@ -350,6 +350,123 @@ func TestImagePrivacyBoundaries(t *testing.T) {
 		}
 	})
 
+	t.Run("隐藏回答后，其下评论的图片一并失效", func(t *testing.T) {
+		// Moderation stops at the answer: the comment row and the root question both stay 'visible', so
+		// resolving ancestors only down to the root topic would keep serving an image the moderator had
+		// just removed along with the answer it is shown under.
+		question := env.do("POST", "/api/v1/topics",
+			`{"board_id":"`+itoa(env.qaBoardID)+`","title":"隐藏回答祖先","body_md":"正文。","is_anonymous":false,"tag_ids":[]}`,
+			authorCookie, authorCSRF)
+		expectStatus(t, question, 201)
+		var root struct {
+			ID string `json:"id"`
+		}
+		if err := json.Unmarshal(question.body, &root); err != nil {
+			t.Fatal(err)
+		}
+		created := env.do("POST", "/api/v1/answers",
+			`{"topic_id":"`+root.ID+`","body_md":"回答。","is_anonymous":false}`, authorCookie, authorCSRF)
+		expectStatus(t, created, 201)
+		var answer struct {
+			ID string `json:"id"`
+		}
+		if err := json.Unmarshal(created.body, &answer); err != nil {
+			t.Fatal(err)
+		}
+		uploaded := env.upload(pngOf(t, 8, 8), "under-answer.png", authorCookie, authorCSRF)
+		expectStatus(t, uploaded, 201)
+		var item struct {
+			ID string `json:"id"`
+		}
+		if err := json.Unmarshal(uploaded.body, &item); err != nil {
+			t.Fatal(err)
+		}
+		comment := env.do("POST", "/api/v1/comments",
+			`{"topic_id":"`+root.ID+`","answer_id":"`+answer.ID+`","body_md":"评论。","is_anonymous":false,"attachment_ids":["`+item.ID+`"]}`,
+			authorCookie, authorCSRF)
+		expectStatus(t, comment, 201)
+		_, _, key := env.attachmentRow(parseUint(t, item.ID))
+		if got := env.fetchImage(key); got.status != 200 {
+			t.Fatalf("a visible answer must serve its comment image: %d", got.status)
+		}
+		if _, err := env.db.Exec(`UPDATE contents SET moderation_status='hidden' WHERE id=?`, answer.ID); err != nil {
+			t.Fatal(err)
+		}
+		if got := env.fetchImage(key); got.status != 404 {
+			t.Fatalf("hiding an answer must hide its comment image from a guest: %d", got.status)
+		}
+		if got := env.fetchImageWithCookie(key, otherCookie); got.status != 404 {
+			t.Fatalf("hiding an answer must hide its comment image from another user: %d", got.status)
+		}
+	})
+
+	t.Run("隐藏父评论后，回复里的图片失效而无关分支不受影响", func(t *testing.T) {
+		// The second intermediate ancestor is the thread root comment: a reply is displayed inside it, so
+		// hiding it has to hide the reply's image while an unrelated comment keeps serving its own.
+		question := env.do("POST", "/api/v1/topics",
+			`{"board_id":"`+itoa(env.qaBoardID)+`","title":"隐藏评论祖先","body_md":"正文。","is_anonymous":false,"tag_ids":[]}`,
+			authorCookie, authorCSRF)
+		expectStatus(t, question, 201)
+		var root struct {
+			ID string `json:"id"`
+		}
+		if err := json.Unmarshal(question.body, &root); err != nil {
+			t.Fatal(err)
+		}
+		first := env.do("POST", "/api/v1/comments",
+			`{"topic_id":"`+root.ID+`","body_md":"顶层评论。","is_anonymous":false}`, authorCookie, authorCSRF)
+		expectStatus(t, first, 201)
+		var parentComment struct {
+			ID string `json:"id"`
+		}
+		if err := json.Unmarshal(first.body, &parentComment); err != nil {
+			t.Fatal(err)
+		}
+
+		replyUpload := env.upload(pngOf(t, 8, 8), "reply.png", authorCookie, authorCSRF)
+		expectStatus(t, replyUpload, 201)
+		var replyImage struct {
+			ID string `json:"id"`
+		}
+		if err := json.Unmarshal(replyUpload.body, &replyImage); err != nil {
+			t.Fatal(err)
+		}
+		reply := env.do("POST", "/api/v1/comments",
+			`{"topic_id":"`+root.ID+`","reply_to_comment_id":"`+parentComment.ID+`","body_md":"回复。","is_anonymous":false,"attachment_ids":["`+replyImage.ID+`"]}`,
+			authorCookie, authorCSRF)
+		expectStatus(t, reply, 201)
+
+		// An unrelated branch proves the predicate follows one thread instead of refusing every comment
+		// image once anything in the topic is hidden.
+		otherUpload := env.upload(pngOf(t, 8, 8), "other.png", authorCookie, authorCSRF)
+		expectStatus(t, otherUpload, 201)
+		var otherImage struct {
+			ID string `json:"id"`
+		}
+		if err := json.Unmarshal(otherUpload.body, &otherImage); err != nil {
+			t.Fatal(err)
+		}
+		other := env.do("POST", "/api/v1/comments",
+			`{"topic_id":"`+root.ID+`","body_md":"另一条顶层评论。","is_anonymous":false,"attachment_ids":["`+otherImage.ID+`"]}`,
+			authorCookie, authorCSRF)
+		expectStatus(t, other, 201)
+
+		_, _, replyKey := env.attachmentRow(parseUint(t, replyImage.ID))
+		_, _, otherKey := env.attachmentRow(parseUint(t, otherImage.ID))
+		if got := env.fetchImage(replyKey); got.status != 200 {
+			t.Fatalf("a visible thread must serve its reply image: %d", got.status)
+		}
+		if _, err := env.db.Exec(`UPDATE contents SET moderation_status='hidden' WHERE id=?`, parentComment.ID); err != nil {
+			t.Fatal(err)
+		}
+		if got := env.fetchImage(replyKey); got.status != 404 {
+			t.Fatalf("hiding the thread root comment must hide its reply image: %d", got.status)
+		}
+		if got := env.fetchImage(otherKey); got.status != 200 {
+			t.Fatalf("an unrelated comment must keep serving its image: %d", got.status)
+		}
+	})
+
 	t.Run("删除根主题后回答图片立即失效", func(t *testing.T) {
 		question := env.do("POST", "/api/v1/topics",
 			`{"board_id":"`+itoa(env.qaBoardID)+`","title":"删除祖先","body_md":"正文。","is_anonymous":false,"tag_ids":[]}`,
@@ -424,6 +541,46 @@ func TestImagePrivacyBoundaries(t *testing.T) {
 		}
 		if got := env.fetchImage(key); got.status != 404 {
 			t.Fatalf("an image no visible content references must stop being served: %d", got.status)
+		}
+	})
+
+	// The rule is "at least one fully visible *reference*", and a reference is a chain rather than a row.
+	// Two references to one image can share no ancestor at all, so the chains have to be judged separately:
+	// a predicate that pools every step by image, as the recursive version did, lets a hidden ancestor of
+	// one reference deny an image the other still shows.
+	t.Run("同一图片的另一条公开引用不因某条引用的祖先被隐藏而失效", func(t *testing.T) {
+		fixture := newHiddenAnswerFixture(t, env, authorCookie, authorCSRF)
+		var imageID uint64
+		if err := env.db.QueryRow(`SELECT id FROM attachments WHERE storage_key=?`, fixture.imageKey).Scan(&imageID); err != nil {
+			t.Fatal(err)
+		}
+		// The same image is now shown by two content rows in different topics: the comment under the
+		// fixture's answer, and a fresh public post of its own.
+		public := env.do("POST", "/api/v1/topics",
+			`{"board_id":"`+itoa(env.boardID)+`","title":"仍公开的图片引用","body_md":"正文。","is_anonymous":false,"tag_ids":[],"attachment_ids":["`+itoa(imageID)+`"]}`,
+			authorCookie, authorCSRF)
+		expectStatus(t, public, 201)
+		if got := env.fetchImage(fixture.imageKey); got.status != 200 {
+			t.Fatalf("an image shown by visible content must be served: %d", got.status)
+		}
+
+		// Hiding the answer removes one reference — the comment under it — and leaves the other one, and
+		// the post that carries it, untouched.
+		env.hideContent(t, fixture.answerID)
+		if got := env.fetchImage(fixture.imageKey); got.status != 200 {
+			t.Fatalf("a still public reference must keep the image served: %d", got.status)
+		}
+
+		// Once the public reference is gone too, nothing visible shows the image any more.
+		var publicBody struct {
+			ID string `json:"id"`
+		}
+		if err := json.Unmarshal(public.body, &publicBody); err != nil {
+			t.Fatal(err)
+		}
+		env.hideContent(t, publicBody.ID)
+		if got := env.fetchImage(fixture.imageKey); got.status != 404 {
+			t.Fatalf("an image with no reachable reference must be refused: %d", got.status)
 		}
 	})
 }

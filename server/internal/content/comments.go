@@ -138,13 +138,20 @@ func (s Store) CreateComment(ctx context.Context, in NewComment) (uint64, error)
 	return contentID, nil
 }
 
+// answerBelongsToTopic reports whether an answer is reachable inside a specific topic: the shared
+// ancestor rule decides whether it can be reached at all, and the question id decides whether this is the
+// topic it hangs from. Both are needed — a visible answer belonging to another topic is not a target here.
 func answerBelongsToTopic(ctx context.Context, tx *sql.Tx, answerID, topicID uint64) (bool, error) {
-	var visible bool
+	if err := requireVisible(ctx, tx, answerID); err != nil {
+		if errors.Is(err, ErrContentNotFound) {
+			return false, nil
+		}
+		return false, err
+	}
+	var belongs bool
 	err := tx.QueryRowContext(ctx, `SELECT EXISTS(
- SELECT 1 FROM answers a JOIN contents c ON c.id=a.content_id
- WHERE a.content_id=? AND a.question_id=? AND c.deleted_at IS NULL AND c.moderation_status='visible')`,
-		answerID, topicID).Scan(&visible)
-	return visible, err
+ SELECT 1 FROM answers WHERE content_id=? AND question_id=?)`, answerID, topicID).Scan(&belongs)
+	return belongs, err
 }
 
 // replyTarget is what a reply needs to know about the comment it answers.
@@ -153,11 +160,19 @@ type replyTarget struct {
 	ParentID sql.NullInt64
 }
 
+// loadReplyTarget reads the comment a reply answers. A hidden or deleted target — or one whose own
+// ancestor chain is broken — is not a reply target, so a reply cannot be attached to a thread a reader
+// cannot reach.
 func loadReplyTarget(ctx context.Context, tx *sql.Tx, commentID, topicID uint64) (replyTarget, error) {
 	var target replyTarget
-	err := tx.QueryRowContext(ctx, `SELECT cm.answer_id,cm.parent_comment_id
-FROM comments cm JOIN contents c ON c.id=cm.content_id
-WHERE cm.content_id=? AND cm.topic_id=? AND c.deleted_at IS NULL AND c.moderation_status='visible'`,
+	if err := requireVisible(ctx, tx, commentID); err != nil {
+		if errors.Is(err, ErrContentNotFound) {
+			return target, ErrReplyTarget
+		}
+		return target, err
+	}
+	err := tx.QueryRowContext(ctx, `SELECT answer_id,parent_comment_id
+FROM comments WHERE content_id=? AND topic_id=?`,
 		commentID, topicID).Scan(&target.AnswerID, &target.ParentID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return target, ErrReplyTarget
@@ -199,8 +214,12 @@ type CommentView struct {
 	Attachments     []Attachment
 }
 
-// CommentByContentID assembles one visible comment.
+// CommentByContentID assembles one comment. Visibility is the shared ancestor rule, so a comment under a
+// hidden answer or a hidden thread root is reported as not found.
 func (s Store) CommentByContentID(ctx context.Context, contentID uint64) (CommentView, error) {
+	if err := requireVisible(ctx, s.DB, contentID); err != nil {
+		return CommentView{}, err
+	}
 	var view CommentView
 	var avatarKey sql.NullString
 	var anonymousNumber sql.NullInt64
@@ -215,7 +234,7 @@ JOIN contents tc ON tc.id=cm.topic_id
 JOIN users u ON u.id=c.author_id
 LEFT JOIN attachments av ON av.id=u.avatar_attachment_id AND av.status IN ('pending','active')
 LEFT JOIN anonymous_identities ai ON ai.id=c.anonymous_identity_id
-WHERE c.id=? AND c.deleted_at IS NULL AND c.moderation_status='visible'`, contentID).
+WHERE c.id=?`, contentID).
 		Scan(&view.ContentID, &view.AuthorID, &view.BodyMD, &view.IsAnonymous, &view.CreatedAt, &view.EditedAt,
 			&view.TopicID, &view.AnswerID, &view.ParentID, &view.ReplyToID,
 			&view.TopicAuthorID,
