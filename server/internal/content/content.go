@@ -73,6 +73,10 @@ func Register(mux *http.ServeMux, deps Deps) {
 		// endpoint that must work from a mail link, so it cannot require a session.
 		mux.Handle("GET /api/v1/me/subscriptions/{topic_id}", auth.Require(deps.Sessions, false, http.HandlerFunc(deps.getSubscription)))
 		mux.Handle("PUT /api/v1/me/subscriptions/{topic_id}", auth.Require(deps.Sessions, false, http.HandlerFunc(deps.setSubscription)))
+		// Reporting. The queue an administrator works from is not mounted yet: reports land in the table and
+		// are readable by their reporter, and nothing here is visible to the reported author.
+		mux.Handle("POST /api/v1/reports", auth.Require(deps.Sessions, false, http.HandlerFunc(deps.createReport)))
+		mux.Handle("GET /api/v1/me/reports", auth.Require(deps.Sessions, false, http.HandlerFunc(deps.listMyReports)))
 	}
 	// Public, but only because the token is the credential: it names one account and one topic, and the
 	// signature is the only thing that authorises the change. POST plus the middleware's exact-Origin check

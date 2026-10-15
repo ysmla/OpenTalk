@@ -5394,7 +5394,7 @@
       "post": {
         "operationId": "createReport",
         "summary": "举报内容",
-        "description": "举报内容",
+        "description": "登录用户操作；同一用户对同一内容最多一个未结案举报（表上的唯一键保证，不是先查后写），结案后可再次举报。举报不改变被举报内容：它是主张而不是裁决，因此刷举报本身无法下架帖子；也不向内容作者公开举报者身份。目标不可见时返回404而不是403，避免用举报探测隐藏ID是否存在。",
         "tags": [
           "reports"
         ],
@@ -5516,7 +5516,7 @@
             }
           }
         },
-        "x-implementation-status": "planned",
+        "x-implementation-status": "implemented",
         "requestBody": {
           "required": true,
           "content": {
@@ -5533,7 +5533,7 @@
       "get": {
         "operationId": "listMyReports",
         "summary": "读取本人举报",
-        "description": "读取本人举报",
+        "description": "仅举报者本人可读，按id倒序、游标绑定本列表。resolution_note在结案后出现，未结案时省略（空note不等于已处理）。",
         "tags": [
           "me"
         ],
@@ -5654,7 +5654,7 @@
             }
           }
         },
-        "x-implementation-status": "planned",
+        "x-implementation-status": "implemented",
         "parameters": [
           {
             "name": "cursor",
