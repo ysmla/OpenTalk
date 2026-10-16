@@ -3,6 +3,7 @@
 !.env.example
 node_modules/
 dist/
+dist-deploy/
 bin/
 .cache/
 __pycache__/

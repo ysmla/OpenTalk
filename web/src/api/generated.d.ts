@@ -237,7 +237,7 @@ export interface paths {
         };
         /**
          * 读取本人内容
-         * @description 私有列表允许作者查看自己的匿名内容；仍不返回删除原文。隐藏处置可通过通知查看。
+         * @description 私有列表：**包含本人匿名内容**（是自己写的，隐去等于让历史不可用），但仍以匿名模式渲染；不含已删除原文，隐藏处置走通知查看。仅本人可读。
          */
         get: operations["listMyContents"];
         put?: never;
@@ -257,7 +257,7 @@ export interface paths {
         };
         /**
          * 读取公开用户资料
-         * @description 读取公开用户资料
+         * @description 只含公开字段：不含邮箱、内部用户ID与账号状态。id 不存在或形状不可能存在时都返回404，不区分二者以免帮助枚举。
          */
         get: operations["getPublicUser"];
         put?: never;
@@ -277,7 +277,7 @@ export interface paths {
         };
         /**
          * 读取用户公开内容
-         * @description 必须排除匿名、隐藏、删除内容；禁止跨身份关联。
+         * @description 必须排除匿名、隐藏、删除内容；禁止跨身份关联。排除匿名是在 SQL 里做的（is_anonymous=FALSE），不是在读取层过滤，因此读取器的疏漏也无法泄露——这是「可追溯匿名」与「可浏览匿名」的分界。
          */
         get: operations["listUserContents"];
         put?: never;
@@ -317,7 +317,7 @@ export interface paths {
         };
         /**
          * 搜索标签
-         * @description 搜索标签
+         * @description 按名称排序的公开列表，游标绑定搜索文本；q按名称子串匹配，其中的LIKE通配符按字面转义。
          */
         get: operations["listTags"];
         put?: never;
@@ -337,7 +337,7 @@ export interface paths {
         };
         /**
          * 读取帖子和问题
-         * @description 读取帖子和问题
+         * @description 置顶主题恒在最前，随后按newest（发布时间）或active（最后活动时间）倒序。游标绑定排序与全部筛选条件，并携带置顶标志。隐藏、删除内容不出现。board_id或tag_id不存在时返回404而不是空列表；resolution_status只匹配问答，讨论帖没有解决状态。
          */
         get: operations["listTopics"];
         put?: never;
@@ -361,7 +361,7 @@ export interface paths {
         };
         /**
          * 读取内容或删除占位
-         * @description 检查全部祖先可见性；隐藏内容统一404；删除内容返回不含原文的占位。
+         * @description 检查全部祖先可见性；隐藏内容统一404。已删除内容返回不含原文、作者与图片的占位，且仅当其祖先链完整可达时返回——级联删除后的子内容仍按404处理，删除占位不会确认一条已经整体消失的内容。
          */
         get: operations["getContent"];
         put?: never;
@@ -389,7 +389,7 @@ export interface paths {
         };
         /**
          * 读取当前会话内容权限
-         * @description 私有响应，不做公共缓存。最终写入仍需重新鉴权。
+         * @description 私有响应，不做公共缓存；未登录访问返回六项全false，而不是401。最终写入仍需重新鉴权。can_edit为false还可能是超过30分钟编辑时限或处于禁言；can_set_resolution只有提问者为true，管理员不是例外；can_delete当前仅作者本人为true（管理员删除他人内容尚未实现，见开发说明）。
          */
         get: operations["getContentPermissions"];
         put?: never;
@@ -429,7 +429,7 @@ export interface paths {
         };
         /**
          * 读取问题回答
-         * @description 读取问题回答
+         * @description 按发布时间正序返回。讨论帖返回409 NOT_A_QUESTION；根问题不可见或不存在返回404。逐行仍走统一祖先可见性判定，而不是只信任SQL筛选。
          */
         get: operations["listAnswers"];
         put?: never;
@@ -469,7 +469,7 @@ export interface paths {
         };
         /**
          * 读取主题或回答评论
-         * @description 读取主题或回答评论
+         * @description 按发布时间正序返回两层显示所需的两层数据：省略parent_comment_id时只返回顶层评论（整个主题，或answer_id指定的回答下的顶层评论），填写parent_comment_id时返回该串根下的全部回复。目标不可见、不属于该主题或不是串根时返回422 INVALID_COMMENT_TARGET；根主题不可见返回404。逐行仍走统一祖先可见性判定。
          */
         get: operations["listComments"];
         put?: never;
@@ -509,7 +509,7 @@ export interface paths {
         };
         /**
          * 搜索公开内容
-         * @description 只检索可见原文，不能检索审核归档；中文搜索策略仍需语料验证。q必须填写。
+         * @description 只检索可见原文，不能检索审核归档；q必填且不超过100字符，按内容id倒序（最新在前，没有相关度信号可排）。匹配是正文子串加标题子串，不是全文索引，中文检索策略仍需语料验证；board_id与tag_id限定"内容所属的根主题"，因此回答与评论也随其主题被筛入或筛出。隐藏、删除内容及其后代不会出现；匿名作者按与其它读取相同的匿名规则渲染。
          */
         get: operations["searchContents"];
         put?: never;
@@ -569,12 +569,12 @@ export interface paths {
         };
         /**
          * 读取邮件偏好
-         * @description 读取邮件偏好
+         * @description 仅本人可读。回复与回答的邮件通知默认开启、评论的默认关闭（见 server/internal/auth/users.go 的 DefaultEmailPreferences），改动这三项以账号里实际存的行为准。没有偏好行时（例如早于该默认值存在的账号）读取为三项全 false：没有行就是没有确认过，不替用户发明值。站内通知不受这三项影响。
          */
         get: operations["getNotificationPreferences"];
         /**
          * 设置邮件偏好
-         * @description 设置邮件偏好
+         * @description 整体替换三项：缺少任一项按 422 拒绝，避免"只改一项"被静默当成"其余关掉"。
          */
         put: operations["setNotificationPreferences"];
         post?: never;
@@ -593,12 +593,12 @@ export interface paths {
         };
         /**
          * 读取单篇邮件设置
-         * @description 读取单篇邮件设置
+         * @description 仅本人可读。没有该主题的设置行时读作 inherit（跟随全局邮件偏好）。主题已删除或不可见时返回404：读者无法为打不开的讨论改邮件设置，而那些邮件本来也不会发出（投递前会重新检查可见性）。
          */
         get: operations["getSubscription"];
         /**
          * 设置单篇邮件订阅
-         * @description 请求topic_id必须与路径相同，覆盖全局默认。
+         * @description 请求topic_id必须与路径相同，覆盖全局默认。只影响该主题的邮件，不影响站内通知；主题已删除或不可见时返回404。
          */
         put: operations["setSubscription"];
         post?: never;
@@ -619,7 +619,7 @@ export interface paths {
         put?: never;
         /**
          * 凭邮件令牌取消订阅
-         * @description 用户打开站内退订确认页后提交，避免邮件扫描器GET误退订；不要求登录，仅校验范围受限的签名令牌和Origin。
+         * @description 用户打开站内退订确认页后提交，避免邮件扫描器GET误退订；不要求登录，仅校验范围受限的签名令牌和Origin。令牌只命名一个账号与一个主题，因此最坏情况只能取消它被签发时对应的那个主题的订阅；不能读取任何内容，也不改动全局邮件偏好。签名用独立子密钥，过期时间在签名覆盖的载荷内。成功后退订者在该主题的设置行被删除，此后该主题回到"跟随全局邮件偏好"。
          */
         post: operations["unsubscribeEmail"];
         delete?: never;
@@ -637,7 +637,7 @@ export interface paths {
         };
         /**
          * 读取站内通知
-         * @description 读取站内通知
+         * @description 仅接收者本人可读。只返回安全摘要与内容定位：不返回作者内部ID、不返回原文快照。actor按内容当前可见性与匿名规则在读取时附加，内容已删除或不可见时省略actor且摘要只说该内容不可见；站内通知是接收者自己的历史，不随删除消失。游标按id倒序翻页，不携带内部用户ID。
          */
         get: operations["listNotifications"];
         put?: never;
@@ -658,7 +658,7 @@ export interface paths {
         get?: never;
         /**
          * 标记通知已读
-         * @description 标记通知已读
+         * @description 仅接收者本人可操作；重复标记按幂等处理返回204，他人的或不存在的通知一律404，不用于确认他人通知是否存在。
          */
         put: operations["readNotification"];
         post?: never;
@@ -679,7 +679,7 @@ export interface paths {
         put?: never;
         /**
          * 举报内容
-         * @description 举报内容
+         * @description 登录用户操作；同一用户对同一内容最多一个未结案举报（表上的唯一键保证，不是先查后写），结案后可再次举报。举报不改变被举报内容：它是主张而不是裁决，因此刷举报本身无法下架帖子；也不向内容作者公开举报者身份。目标不可见时返回404而不是403，避免用举报探测隐藏ID是否存在。
          */
         post: operations["createReport"];
         delete?: never;
@@ -697,7 +697,7 @@ export interface paths {
         };
         /**
          * 读取本人举报
-         * @description 读取本人举报
+         * @description 仅举报者本人可读，按id倒序、游标绑定本列表。resolution_note在结案后出现，未结案时省略（空note不等于已处理）。
          */
         get: operations["listMyReports"];
         put?: never;
@@ -717,7 +717,7 @@ export interface paths {
         };
         /**
          * 读取举报队列
-         * @description 读取举报队列
+         * @description 队列是尚未处理的工作，因此只含 pending 与 processing；已结案举报的结果由举报者通过 /me/reports 读取，决定本身在管理审计里。载荷含举报者（管理员需要）与处理者，但**不含被举报内容的作者**——匿名作者不会因为有人举报而暴露，追溯须走专用流程。
          *     需要管理员权限；涉及匿名追溯与原文读取时需专用审计。
          */
         get: operations["listAdminReports"];
@@ -744,7 +744,7 @@ export interface paths {
         head?: never;
         /**
          * 处理举报
-         * @description 处理举报
+         * @description 只接受 resolved 与 dismissed：结案是单向的，重复结案返回409。结案只记录对举报的决定并写审计行，**不改动内容**——隐藏内容走 /admin/contents/{id}/visibility，这样审计才能说清管理员到底选了哪一种。状态检查与更新在同一事务内并用 SELECT … FOR UPDATE 锁行，避免两个管理员同时结案却都写一行审计。
          *     需要管理员权限；涉及匿名追溯与原文读取时需专用审计。
          */
         patch: operations["resolveReport"];
@@ -869,7 +869,7 @@ export interface paths {
         };
         /**
          * 读取管理审计
-         * @description 读取管理审计
+         * @description 只追加的审核记录，按id倒序、游标绑定本列表；载荷只有操作者、动作、原因与目标ID，不复制内容正文、密码、验证码或会话凭证。
          *     需要管理员权限；涉及匿名追溯与原文读取时需专用审计。
          */
         get: operations["listAudit"];
@@ -1001,7 +1001,7 @@ export interface paths {
         head?: never;
         /**
          * 隐藏或恢复内容
-         * @description 隐藏或恢复内容
+         * @description 需要管理员权限。隐藏与删除独立：隐藏只改 moderation_status，行、正文与标题都留在原处，因此可恢复，也不写删除归档。隐藏的效果覆盖整棵子树与附件——可见性规则本来就同时读 deleted_at 与 moderation_status，所以无需在此遍历后代。重复同一决定是幂等空操作且不写审计行：审计行必须意味着此处做过一次决定。已删除内容返回404（已被归档，没有可隐藏的正文）。
          *     需要管理员权限；涉及匿名追溯与原文读取时需专用审计。
          */
         patch: operations["setVisibility"];

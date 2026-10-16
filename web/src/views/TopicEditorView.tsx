@@ -9,6 +9,7 @@ import {
  isTopic,
  listAllBoards,
  listAllTags,
+ topicIdOf,
  type Board,
  type ContentPermissions,
  type PublicContent,
@@ -33,16 +34,22 @@ type TopicEditorViewProps = {
  user?: CurrentUser;
  sessionReady: boolean;
  /** Called after a successful save, with the content the server returned. */
- onSaved: (result: EditorSaveResult) => void;
+ onSaved: (result: EditorSaveResult, fallbackTopicId?: string) => void;
  onUnauthenticated: () => void;
 };
 
 /**
  * One editor for 发帖 and 提问 — the board's `kind` decides which one the server
- * creates — and for editing an existing topic or answer. Creating and editing
- * share the Markdown body, the live preview and the attachment list; editing
- * additionally sends `attachment_ids` with the contract's "omit to keep, empty
- * array to detach everything" meaning.
+ * creates — and for editing an existing topic, answer or comment. Creating and
+ * editing share the Markdown body, the live preview and the attachment list;
+ * editing additionally sends `attachment_ids` with the contract's "omit to
+ * keep, empty array to detach everything" meaning.
+ *
+ * A comment is editable here like any other content the viewer wrote: the
+ * contract exposes it as `PATCH /contents/{content_id}`, and `CommentThread`
+ * links to this page. Only the fields the content actually has are rendered —
+ * a title exists for a topic alone, and the board/tag catalogue is only needed
+ * when creating.
  */
 export function TopicEditorView({ contentId, initialBoardId, user, sessionReady, onSaved, onUnauthenticated }: TopicEditorViewProps) {
  const [boards, setBoards] = useState<Board[]>([]);
@@ -53,6 +60,10 @@ export function TopicEditorView({ contentId, initialBoardId, user, sessionReady,
  const [loaded, setLoaded] = useState<PublicContent>();
  const [permissions, setPermissions] = useState<ContentPermissions>();
  const [denied, setDenied] = useState(false);
+ // The discussion to return to after saving. A topic is its own; an answer or a
+ // comment names the topic it belongs to. Captured from the loaded content
+ // because the save response is used for the body, not for the location.
+ const [returnTopicId, setReturnTopicId] = useState<string>();
 
  const [boardId, setBoardId] = useState('');
  const [title, setTitle] = useState('');
@@ -84,13 +95,14 @@ export function TopicEditorView({ contentId, initialBoardId, user, sessionReady,
   setLoadFailure(undefined);
   setDenied(false);
   async function load() {
-   // The whole board and tag catalogue, not one page: the picker must not hide
-   // a choice just because the list outgrew its first page.
-   const [boardItems, tagItems] = await Promise.all([listAllBoards(controller.signal), listAllTags(controller.signal)]);
-   if (controller.signal.aborted) return;
-   setBoards(boardItems);
-   setTags(tagItems);
    if (contentId === undefined) {
+    // The whole board and tag catalogue, not one page: the picker must not hide
+    // a choice just because the list outgrew its first page. Only a new topic
+    // needs them, so an edit does not pay for two extra requests.
+    const [boardItems, tagItems] = await Promise.all([listAllBoards(controller.signal), listAllTags(controller.signal)]);
+    if (controller.signal.aborted) return;
+    setBoards(boardItems);
+    setTags(tagItems);
     const preselect = initialBoardId !== undefined && boardItems.some(board => board.id === initialBoardId)
      ? initialBoardId
      : boardItems.find(board => !board.is_archived)?.id ?? '';
@@ -104,17 +116,25 @@ export function TopicEditorView({ contentId, initialBoardId, user, sessionReady,
     setDenied(true);
     return;
    }
-   setLoaded(content);
-   if (!isTopic(content) && content.kind !== 'answer') {
-    // A comment is not editable on a page of its own.
+   // A topic, an answer and a comment are all editable by their author within
+   // the window; there is no fourth kind, so nothing is refused on kind alone.
+   if (!isTopic(content) && content.kind !== 'answer' && content.kind !== 'comment') {
     setDenied(true);
     return;
    }
+   setLoaded(content);
+   setReturnTopicId(topicIdOf(content));
    setBody(content.body_md);
    setInitialBody(content.body_md);
    setImages(content.attachments.map(attachment => ({ attachment, name: `已有图片 #${attachment.id}` })));
    setInitialImageIds(content.attachments.map(attachment => attachment.id));
    if (isTopic(content)) {
+    // The board and tag pickers only matter for a topic, but their labels read
+    // better with the catalogue loaded, so it is fetched for an edited topic too.
+    const [boardItems, tagItems] = await Promise.all([listAllBoards(controller.signal), listAllTags(controller.signal)]);
+    if (controller.signal.aborted) return;
+    setBoards(boardItems);
+    setTags(tagItems);
     setBoardId(content.board_id);
     setTitle(content.title);
     setTagIds(content.tags.map(tag => tag.id));
@@ -225,7 +245,8 @@ export function TopicEditorView({ contentId, initialBoardId, user, sessionReady,
      // 空数组表示解除全部附件关联。
      ...(attachmentsChanged ? { attachment_ids: currentIds } : {}),
     });
-    onSaved({ mode: 'edited', content: updated });
+    // 评论与回答没有自己的页面，返回所属讨论；主题返回它自己。
+    onSaved({ mode: 'edited', content: updated }, returnTopicId);
     return;
    }
    const created = await createTopic({
@@ -254,7 +275,7 @@ export function TopicEditorView({ contentId, initialBoardId, user, sessionReady,
    <h1>编辑内容</h1>
    <Alert failure={{ text: '当前账号无法编辑该内容。' }} />
    <nav className="links" aria-label="返回">
-    <a href={`#/topic/${encodeURIComponent(contentId)}`}>返回内容</a>
+    <a href={`#/topic/${encodeURIComponent(returnTopicId ?? contentId)}`}>返回内容</a>
     <a href="#/">返回主题列表</a>
    </nav>
   </main>;
@@ -403,7 +424,7 @@ export function TopicEditorView({ contentId, initialBoardId, user, sessionReady,
    <Alert failure={saveFailure} />
    <div className="actions">
     <button type="submit" disabled={saving}>{saving ? '正在提交…' : editing ? '保存修改' : isQuestionBoard ? '发布问题' : '发布主题'}</button>
-    {editing && contentId !== undefined && <a href={`#/topic/${encodeURIComponent(contentId)}`}>返回内容</a>}
+    {editing && contentId !== undefined && <a href={`#/topic/${encodeURIComponent(returnTopicId ?? contentId)}`}>返回内容</a>}
     <a href="#/">返回主题列表</a>
    </div>
   </form>

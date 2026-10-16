@@ -19,6 +19,12 @@ var (
 
 // DefaultEmailPreferences is applied when an account is created. Replies and answers to a user's own
 // content are the transactional cases users expect; comment traffic stays off until they opt in.
+//
+// This is the single source of those defaults, and the contract's description of
+// `GET /me/notification-preferences` names it. That matters because "no row" and "a new account" are
+// different states: a missing row reads as all-false (nobody ever chose anything), while every account
+// this function creates does have a row. Changing a value here changes what a brand-new reader receives
+// by mail, so it belongs in the same change as the contract text and the delivery tests.
 const (
 	defaultEmailOnComment = false
 	defaultEmailOnAnswer  = true

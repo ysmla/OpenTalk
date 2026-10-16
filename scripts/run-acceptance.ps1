@@ -45,9 +45,18 @@ Write-Output '--- create the two accounts ---'
 $previous = $ErrorActionPreference
 $ErrorActionPreference = 'Continue'
 'acceptadmin123' | & (Join-Path $work 'admin.exe') -action create-admin -email 'accept-admin@example.test' -nickname AcceptAdm -password-stdin
+# The second account must be an ordinary user: the walk proves what a normal member can and cannot do
+# (admin endpoints answer 403 for it), and a second administrator would silently make those checks meaningless.
+# create-admin can only mint administrators, so the role is demoted here — registration would need a captcha
+# and a real mailbox, which this scratch environment does not have.
 'acceptmember123' | & (Join-Path $work 'admin.exe') -action create-admin -email 'accept-member@example.test' -nickname AcceptMem -password-stdin
 $ErrorActionPreference = $previous
-Write-Output 'accounts ready'
+docker exec -e MYSQL_PWD=$rootPassword opentalk-dev-mysql-1 mysql -uroot `
+    -e "UPDATE $schema.users SET role='user' WHERE email_normalized='accept-member@example.test';" | Out-Null
+$memberRole = docker exec -e MYSQL_PWD=$rootPassword opentalk-dev-mysql-1 mysql -uroot -N -B `
+    -e "SELECT role FROM $schema.users WHERE email_normalized='accept-member@example.test';"
+if ($memberRole.Trim() -ne 'user') { throw "the member account is not an ordinary user: '$memberRole'" }
+Write-Output 'accounts ready (member role=user)'
 
 $api = Start-Process -FilePath (Join-Path $work 'api.exe') -PassThru -NoNewWindow `
     -RedirectStandardOutput (Join-Path $work 'api.log') -RedirectStandardError (Join-Path $work 'api-error.log')

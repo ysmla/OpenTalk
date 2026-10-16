@@ -83,6 +83,9 @@ ul.replies { margin: 12px 0 0 24px; padding-left: 16px; border-left: 2px solid #
 .reply-to { display: block; font-size: 13px; color: #566b63; margin-bottom: 4px; }
 .composer { border: 1px solid #bfcac3; border-radius: 8px; padding: 16px 18px; background: #fff; margin-top: 24px; max-width: none; }
 .composer h3 { margin-top: 0; font-size: 16px; }
+/* 评论区的上传器与输入框属于同一次提交，因此合成一块而不是两段间隔。 */
+.comment-composer { margin-top: 24px; }
+.comment-composer .composer { margin-top: 12px; }
 
 /*
  * Rendered user Markdown. Styling only: the security decisions live in
@@ -120,3 +123,11 @@ ul.replies { margin: 12px 0 0 24px; padding-left: 16px; border-left: 2px solid #
 /* 删除原文按原样展示（含换行的 Markdown 源码），因此用等宽并保留空白。 */
 .archive { white-space: pre-wrap; word-break: break-word; background: #f4f3ee; border: 1px solid #e3e1d8; border-radius: 6px; padding: 10px; }
 .avatar { border-radius: 50%; vertical-align: middle; margin-right: 6px; }
+
+/* 外链中间页：展示目标真实域名后再由用户决定是否离站（requirements.md:76）。 */
+.modal { position: fixed; inset: 0; display: grid; place-items: center; padding: 24px; background: rgba(24, 48, 43, .55); z-index: 10; }
+.modal-panel { width: min(100%, 460px); background: #fff; border: 1px solid #bfcac3; border-radius: 10px; padding: 20px 22px; box-shadow: 0 12px 32px rgba(24, 48, 43, .25); }
+.modal-panel h2 { margin-top: 0; font-size: 18px; }
+.modal-panel p { margin: 8px 0; }
+.modal-target { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 15px; overflow-wrap: anywhere; padding: 8px 10px; border: 1px solid #bfcac3; border-radius: 6px; background: #f5f4ee; }
+.modal-panel .actions { margin-top: 16px; }

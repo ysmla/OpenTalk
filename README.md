@@ -1,6 +1,6 @@
 # OpenTalk
 
-面向小型社区的论坛，支持普通讨论、问答与可追溯匿名发言。
+面向小型社区的论坛，支持普通讨论、问答与可追溯匿名发言，完全由AI开发.
 
 技术栈：React / Go / MySQL / Redis，部署到自有服务器。
 
@@ -18,5 +18,6 @@
 - [备份恢复演练](docs/verification-2026-10-15-backup-restore-drill.md)
 - [内容读取端点实现与验证](docs/verification-2026-10-15-content-reads.md)
 - [内容侧前端浏览器走查](docs/verification-2026-10-15-content-frontend-browser.md)
+- [完整验收 6 类缺口的修复与复验](docs/verification-2026-10-15-acceptance-repairs.md)
 - [通知邮件投递（含真实投递验证）](docs/verification-2026-10-15-delivery.md)
 - [公开内容搜索（含索引优化与筛选控件）](docs/verification-2026-10-15-search.md)

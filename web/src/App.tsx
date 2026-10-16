@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useState } from 'react';
 import { getCSRF, getMe, logout as logoutRequest, type CurrentUser } from './api/auth';
 import { APIError, setCSRFToken, setUnauthenticatedHandler } from './api/client';
-import { isTopic } from './api/content';
+import { topicIdOf } from './api/content';
 import { useHashRoute } from './hooks/useHashRoute';
 import { describeError, type Failure } from './lib/messages';
+import { dismissLinkConfirmation, LinkConfirmDialog } from './components/LinkConfirmDialog';
 import { AdminSettingsView } from './views/AdminSettingsView';
 import { HomeView } from './views/HomeView';
 import { LoginView } from './views/LoginView';
@@ -20,6 +21,7 @@ import { SearchView } from './views/SearchView';
 import { TopicDetailView } from './views/TopicDetailView';
 import { TopicEditorView, type EditorSaveResult } from './views/TopicEditorView';
 import { TopicsView } from './views/TopicsView';
+import { UnsubscribeView } from './views/UnsubscribeView';
 
 export function App() {
  const [location, navigate] = useHashRoute();
@@ -118,106 +120,133 @@ export function App() {
  }, [navigate]);
 
  /**
-  * Follow the hash the server's own response points at. The editor reports what
-  * the server created or returned, and this decides where to land: a topic
-  * opens its detail page, anything else falls back to the caller's page.
+  * Follow the hash the editor reports. A topic opens its own detail page; an
+  * answer or a comment — which has no page of its own — opens the discussion it
+  * belongs to, which the editor passes as the fallback.
   */
  const handleSaved = useCallback((result: EditorSaveResult, fallbackTopicId?: string) => {
-  const target = isTopic(result.content) ? result.content.id : fallbackTopicId;
+  const target = topicIdOf(result.content) ?? fallbackTopicId;
   const href = target === undefined || target === '' ? '#/' : `#/topic/${encodeURIComponent(target)}`;
   if (window.location.hash !== href) window.location.hash = href;
  }, []);
 
- switch (location.name) {
-  case 'login':
-   return <LoginView notice={notice} initialEmail={loginEmail} onAuthenticated={handleAuthenticated} />;
-  case 'register':
-   return <RegisterView onRegistered={handleRegistered} />;
-  case 'reset':
-   return <ResetPasswordView onReset={handleReset} />;
-  case 'me':
-   return <ProfileView user={user} onUserChange={handleUserChange} onUnauthenticated={handleUnauthenticated} />;
-  case 'admin':
-   return <AdminSettingsView user={user} sessionReady={sessionReady} onUnauthenticated={handleUnauthenticated} />;
-  case 'topics':
-   return <TopicsView user={user} sessionReady={sessionReady} onUnauthenticated={handleUnauthenticated} />;
-  case 'board':
-   return <TopicsView user={user} sessionReady={sessionReady} boardId={location.id} onUnauthenticated={handleUnauthenticated} />;
-  case 'tag':
-   // 标签筛选复用主题列表：合同支持 tag_id 查询参数。
-   return <TopicsView user={user} sessionReady={sessionReady} tagId={location.id} onUnauthenticated={handleUnauthenticated} />;
-  case 'topic':
-   return <TopicDetailView
-    topicId={location.id}
-    user={user}
-    sessionReady={sessionReady}
-    onUnauthenticated={handleUnauthenticated}
-   />;
-  case 'new':
-   return <TopicEditorView
-    initialBoardId={location.boardId}
-    user={user}
-    sessionReady={sessionReady}
-    onSaved={handleSaved}
-    onUnauthenticated={handleUnauthenticated}
-   />;
-  case 'edit':
-   return <TopicEditorView
-    contentId={location.id}
-    user={user}
-    sessionReady={sessionReady}
-    onSaved={result => handleSaved(result, location.id)}
-    onUnauthenticated={handleUnauthenticated}
-   />;
-  case 'admin-operations':
-   return <AdminOperationsView
-    sessionReady={sessionReady}
-    signedIn={user !== undefined}
-    isAdmin={user?.role === 'admin'}
-    onUnauthenticated={handleUnauthenticated}
-   />;
-  case 'search':
-   return <SearchView
-    q={location.q}
-    boardId={location.boardId}
-    tagId={location.tagId}
-    user={user}
-    sessionReady={sessionReady}
-    onUnauthenticated={handleUnauthenticated}
-   />;
-  case 'me-reports':
-   return <MyReportsView
-    sessionReady={sessionReady}
-    signedIn={user !== undefined}
-    onUnauthenticated={handleUnauthenticated}
-   />;
-  case 'me-notifications':
-   return <NotificationsView
-    sessionReady={sessionReady}
-    signedIn={user !== undefined}
-    onUnauthenticated={handleUnauthenticated}
-   />;
-  case 'me-contents':
-   return <MyContentsView
-    sessionReady={sessionReady}
-    signedIn={user !== undefined}
-    onUnauthenticated={handleUnauthenticated}
-   />;
-  case 'user':
-   return <UserProfileView
-    publicId={location.id}
-    sessionReady={sessionReady}
-    signedIn={user !== undefined}
-    onUnauthenticated={handleUnauthenticated}
-   />;
-  case 'admin-moderation':
-   return <AdminModerationView
-    sessionReady={sessionReady}
-    signedIn={user !== undefined}
-    isAdmin={user?.role === 'admin'}
-    onUnauthenticated={handleUnauthenticated}
-   />;
-  default:
-   return <HomeView user={user} sessionReady={sessionReady} onLogout={handleLogout} />;
+ /**
+  * The one screen the current hash names. Kept as a function rather than a
+  * return inside `switch` because every screen is rendered together with the
+  * 外链确认 dialog below, which belongs to the app and not to a screen.
+  */
+ function currentScreen() {
+  switch (location.name) {
+   case 'login':
+    return <LoginView notice={notice} initialEmail={loginEmail} onAuthenticated={handleAuthenticated} />;
+   case 'register':
+    return <RegisterView onRegistered={handleRegistered} />;
+   case 'reset':
+    return <ResetPasswordView onReset={handleReset} />;
+   case 'me':
+    return <ProfileView user={user} onUserChange={handleUserChange} onUnauthenticated={handleUnauthenticated} />;
+   case 'admin':
+    return <AdminSettingsView user={user} sessionReady={sessionReady} onUnauthenticated={handleUnauthenticated} />;
+   case 'topics':
+    return <TopicsView user={user} sessionReady={sessionReady} onUnauthenticated={handleUnauthenticated} />;
+   case 'board':
+    return <TopicsView user={user} sessionReady={sessionReady} boardId={location.id} onUnauthenticated={handleUnauthenticated} />;
+   case 'tag':
+    // 标签筛选复用主题列表：合同支持 tag_id 查询参数。
+    return <TopicsView user={user} sessionReady={sessionReady} tagId={location.id} onUnauthenticated={handleUnauthenticated} />;
+   case 'topic':
+    return <TopicDetailView
+     topicId={location.id}
+     user={user}
+     sessionReady={sessionReady}
+     onUnauthenticated={handleUnauthenticated}
+    />;
+   case 'new':
+    return <TopicEditorView
+     initialBoardId={location.boardId}
+     user={user}
+     sessionReady={sessionReady}
+     onSaved={handleSaved}
+     onUnauthenticated={handleUnauthenticated}
+    />;
+   case 'edit':
+    return <TopicEditorView
+     contentId={location.id}
+     user={user}
+     sessionReady={sessionReady}
+     onSaved={result => handleSaved(result, location.id)}
+     onUnauthenticated={handleUnauthenticated}
+    />;
+   case 'admin-operations':
+    return <AdminOperationsView
+     sessionReady={sessionReady}
+     signedIn={user !== undefined}
+     isAdmin={user?.role === 'admin'}
+     onUnauthenticated={handleUnauthenticated}
+    />;
+   case 'search':
+    return <SearchView
+     q={location.q}
+     boardId={location.boardId}
+     tagId={location.tagId}
+     user={user}
+     sessionReady={sessionReady}
+     onUnauthenticated={handleUnauthenticated}
+    />;
+   case 'me-reports':
+    return <MyReportsView
+     sessionReady={sessionReady}
+     signedIn={user !== undefined}
+     onUnauthenticated={handleUnauthenticated}
+    />;
+   case 'me-notifications':
+    return <NotificationsView
+     sessionReady={sessionReady}
+     signedIn={user !== undefined}
+     onUnauthenticated={handleUnauthenticated}
+    />;
+   case 'me-contents':
+    return <MyContentsView
+     sessionReady={sessionReady}
+     signedIn={user !== undefined}
+     onUnauthenticated={handleUnauthenticated}
+    />;
+   case 'user':
+    return <UserProfileView
+     publicId={location.id}
+     sessionReady={sessionReady}
+     signedIn={user !== undefined}
+     onUnauthenticated={handleUnauthenticated}
+    />;
+   case 'admin-moderation':
+    return <AdminModerationView
+     sessionReady={sessionReady}
+     signedIn={user !== undefined}
+     isAdmin={user?.role === 'admin'}
+     onUnauthenticated={handleUnauthenticated}
+    />;
+   case 'unsubscribe':
+    // 邮件里的退订链接不要求登录，也不依赖会话状态：签名令牌就是全部凭据。
+    // key 让另一个令牌（或刷新到一个失效令牌）从头开始，而不是沿用上一次的结果。
+    return <UnsubscribeView key={location.token ?? ''} token={location.token} />;
+   default:
+    return <HomeView user={user} sessionReady={sessionReady} onLogout={handleLogout} />;
+  }
  }
+
+ /**
+  * 继续访问 on the 外链中间页: the reader has seen the real domain and asked to
+  * go there, so the navigation is handed to the browser exactly as the link
+  * would have done it. The confirmation is closed first, so a slow destination
+  * does not leave the dialog on screen.
+  */
+ const handleContinueToExternal = useCallback((href: string) => {
+  dismissLinkConfirmation();
+  window.location.assign(href);
+ }, []);
+
+ return <>
+  {currentScreen()}
+  <LinkConfirmDialog onContinue={handleContinueToExternal} />
+ </>;
 }

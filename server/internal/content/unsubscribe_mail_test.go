@@ -188,8 +188,18 @@ func TestUnsubscribeLinkFromTheDeliveredMessage(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if override != overrideDisabled {
-		t.Fatalf("after following the link the override is %q, want %q", override, overrideDisabled)
+	// Following the link withdraws the reader's per-topic choice, so the topic reads as `inherit` again
+	// and the row is gone — not pinned to `disabled` (see ClearTopicSubscription).
+	if override != overrideInherit {
+		t.Fatalf("after following the link the override is %q, want %q", override, overrideInherit)
+	}
+	var rows int
+	if err := env.db.QueryRow(`SELECT COUNT(*) FROM topic_subscriptions WHERE user_id=? AND topic_id=?`,
+		reader, topic).Scan(&rows); err != nil {
+		t.Fatal(err)
+	}
+	if rows != 0 {
+		t.Fatalf("following the link left %d row(s) behind", rows)
 	}
 	// One topic, nothing else: the account-wide switch is untouched, which is the promise the link makes.
 	preferences, err := env.store.NotificationPreferences(context.Background(), reader)

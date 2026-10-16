@@ -16,6 +16,7 @@ import { AttachmentGallery } from '../components/AttachmentGallery';
 import { authorLabel, TagList, TopicStatus } from '../components/ContentMeta';
 import { ReportButton } from '../components/ReportButton';
 import { Markdown } from '../components/Markdown';
+import { TopicSubscriptionControl } from '../components/TopicSubscriptionControl';
 import { AnswersSection } from './AnswersSection';
 import { CommentsSection } from './CommentsSection';
 import { formatDateTime } from '../lib/format';
@@ -228,16 +229,36 @@ export function TopicDetailView({ topicId, user, sessionReady, onUnauthenticated
   <Alert failure={actionFailure} />
   <Status>{notice}</Status>
 
+  {/* 单篇邮件订阅只对已登录读者有意义：服务端按会话读取和写入，未登录时没有
+      可设置的对象，因此不显示一个必然会 401 的控件（requirements.md:93）。 */}
+  {sessionReady && user && <TopicSubscriptionControl topicId={topic.id} signedIn />}
+
   {topic.kind === 'question'
-   ? <AnswersSection
-    topicId={topic.id}
-    permissions={permissions}
-    isLocked={blocked}
-    topicIsLocked={topic.is_locked}
-    signedIn={user !== undefined}
-    viewer={viewer}
-    onUnauthenticated={onUnauthenticated}
-   />
+   ? <>
+    {/* 问题本身也可以有澄清评论（requirements.md:33），不必先发回答。
+        已解决或锁定时问题级评论、回答和回答下评论一起关闭：同一个 blocked
+        既决定回答区，也决定这里。 */}
+    <CommentsSection
+     topicId={topic.id}
+     canComment={permissions?.can_create_comment === true && !blocked}
+     closed={blocked}
+     topicIsLocked={topic.is_locked}
+     signedIn={user !== undefined}
+     viewer={viewer}
+     forceAnonymous={permissions?.force_anonymous_comment}
+     onUnauthenticated={onUnauthenticated}
+     emptyText="这个问题还没有评论。"
+    />
+    <AnswersSection
+     topicId={topic.id}
+     permissions={permissions}
+     isLocked={blocked}
+     topicIsLocked={topic.is_locked}
+     signedIn={user !== undefined}
+     viewer={viewer}
+     onUnauthenticated={onUnauthenticated}
+    />
+   </>
    : <CommentsSection
     topicId={topic.id}
     canComment={permissions?.can_create_comment === true && !blocked}

@@ -72,6 +72,9 @@ export function CommentsSection({ topicId, answerId, canComment, closed, topicIs
  const [draft, setDraft] = useState('');
  const [images, setImages] = useState<UploadItem[]>([]);
  const [target, setTarget] = useState<Comment>();
+ // 每一条评论/回复独立选择身份（requirements.md:19）。匿名楼主由服务端强制匿名，
+ // 这个开关对它固定为选中且不可关闭；其他参与者可以逐条选择。
+ const [anonymous, setAnonymous] = useState(false);
  const [posting, setPosting] = useState(false);
  const [postFailure, setPostFailure] = useState<Failure>();
  const [notice, setNotice] = useState<string>();
@@ -192,7 +195,7 @@ export function CommentsSection({ topicId, answerId, canComment, closed, topicIs
     ...(answerId === undefined ? {} : { answer_id: answerId }),
     ...(target === undefined ? {} : { reply_to_comment_id: target.id }),
     body_md: draft,
-    is_anonymous: forceAnonymous === true,
+    is_anonymous: forceAnonymous === true || anonymous,
     // The images already uploaded for this comment. They are associated in the same transaction as the
     // comment, which is also what turns them from "pending" into attached content.
     ...(images.length === 0 ? {} : { attachment_ids: images.map(item => item.attachment.id) }),
@@ -247,6 +250,8 @@ export function CommentsSection({ topicId, answerId, canComment, closed, topicIs
     if (thread === undefined || !thread.hasMore) return undefined;
     return { loading: thread.loading, onLoadMore: () => void loadMoreReplies(rootId) };
    }}
+   signedIn={signedIn === true}
+   onUnauthenticated={onUnauthenticated}
   />}
   <Alert failure={failure} />
   {failure && <div className="actions">
@@ -264,7 +269,7 @@ export function CommentsSection({ topicId, answerId, canComment, closed, topicIs
   </div>}
 
   {canComment
-   ? <>
+   ? <div className="comment-composer">
     <ImageUploader
      images={images}
      onChange={setImages}
@@ -280,12 +285,12 @@ export function CommentsSection({ topicId, answerId, canComment, closed, topicIs
     onCancel={target ? () => setTarget(undefined) : undefined}
     pending={posting}
     failure={postFailure}
-    hint={forceAnonymous
-     ? '你在此主题下发言会被强制匿名，展示为楼主或匿名编号。'
-     : '支持 Markdown：原始 HTML 会被转义，链接只允许 http、https 与 mailto。'}
+    forceAnonymous={forceAnonymous === true}
+    anonymous={anonymous}
+    onAnonymousChange={setAnonymous}
     submitLabel={target ? '发布回复' : '发布评论'}
     />
-   </>
+   </div>
    : <p className="hint">{closed
     ? '主题已锁定或问题已解决，暂时不能新增评论或回复。'
     : signedIn ? '当前账号暂时不能发表评论。' : '登录后可以参与讨论。'}</p>}

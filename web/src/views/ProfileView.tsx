@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { getMe, updateMe, type CurrentUser, type UpdateProfileRequest } from '../api/auth';
 import { Alert, Status } from '../components/Alert';
 import { Field, TextAreaField } from '../components/Field';
+import { MailPreferences } from '../components/MailPreferences';
 import { formatDateTime } from '../lib/format';
 import { describeError, isStatus, type Failure } from '../lib/messages';
 import { bioProblem, charCount, nicknameProblem, BIO_MAX, NICKNAME_MAX } from '../lib/validate';
@@ -145,6 +146,8 @@ export function ProfileView({ user, onUserChange, onUnauthenticated }: ProfileVi
     <a href="#/me/notifications">查看通知</a>
    </nav>
   </section>
+  {/* 邮件偏好是可写设置，不是说明文字：界面上的文案不等于有设置功能。 */}
+  <MailPreferences signedIn={profile !== undefined} />
   <section aria-labelledby="my-reports-heading">
    <h2 id="my-reports-heading">我的举报</h2>
    <p>你提交过的举报与处理结果；举报不会自动隐藏或删除内容。</p>

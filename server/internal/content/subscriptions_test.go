@@ -91,11 +91,19 @@ func TestTopicSubscriptionRejectsBadRequests(t *testing.T) {
 		`{"topic_id":"`+itoa(topic)+`","email_override":"disabled"}`, cookie, ""), 403)
 }
 
-func TestUnsubscribeTokenDisablesOnlyItsTopic(t *testing.T) {
+func TestUnsubscribeTokenClearsOnlyItsTopic(t *testing.T) {
 	env := newTopicEnv(t)
 	topic := env.topic(env.boardID, "订阅测试")
 	otherTopic := env.topic(env.boardID, "另一个主题")
 	reader := env.newUser("reader")
+
+	// The reader had explicitly turned this topic's mail ON; the link must withdraw that choice.
+	if err := env.store.SaveTopicSubscription(context.Background(), reader, topic, overrideEnabled); err != nil {
+		t.Fatal(err)
+	}
+	if err := env.store.SaveTopicSubscription(context.Background(), reader, otherTopic, overrideEnabled); err != nil {
+		t.Fatal(err)
+	}
 
 	// A token for one account and one topic, as the mail would carry it.
 	token, err := mintUnsubscribeToken(env.deps.UnsubscribeKey, reader, topic, time.Now())
@@ -109,15 +117,26 @@ func TestUnsubscribeTokenDisablesOnlyItsTopic(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if override != overrideDisabled {
-		t.Fatalf("after unsubscribing the override is %q", override)
+	// Cancelling removes the row, so the topic follows the global preference again instead of being
+	// pinned to `disabled`. `disabled` and "no row" both stop this topic's mail, but only "no row" is
+	// what the reader asked for: withdrawing their per-topic choice rather than making the opposite one.
+	if override != overrideInherit {
+		t.Fatalf("after unsubscribing the override is %q, want %q", override, overrideInherit)
 	}
-	// Exactly one topic is affected: the neighbouring discussion keeps inheriting.
+	var rows int
+	if err := env.db.QueryRow(`SELECT COUNT(*) FROM topic_subscriptions WHERE user_id=? AND topic_id=?`,
+		reader, topic).Scan(&rows); err != nil {
+		t.Fatal(err)
+	}
+	if rows != 0 {
+		t.Fatalf("unsubscribing left %d row(s) behind", rows)
+	}
+	// Exactly one topic is affected: the neighbouring discussion keeps its own explicit setting.
 	neighbour, err := env.store.TopicSubscription(context.Background(), reader, otherTopic)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if neighbour != overrideInherit {
+	if neighbour != overrideEnabled {
 		t.Fatalf("the neighbouring topic was changed to %q", neighbour)
 	}
 	// The global preferences are untouched: a per-topic link cannot flip the account-wide switch.
@@ -128,6 +147,8 @@ func TestUnsubscribeTokenDisablesOnlyItsTopic(t *testing.T) {
 	if preferences != (notificationPreferences{}) {
 		t.Fatalf("the unsubscribe link changed global preferences: %+v", preferences)
 	}
+	// A mail link may be opened twice; the second POST has nothing left to remove and still succeeds.
+	expectStatus(t, env.do("POST", "/api/v1/subscriptions/unsubscribe", `{"token":"`+token+`"}`, "", ""), 204)
 }
 
 func TestUnsubscribeTokenRejectsForgery(t *testing.T) {

@@ -171,6 +171,20 @@ export function isDeleted(content: PublicContent): content is DeletedContent {
 }
 
 /**
+ * The discussion a piece of content belongs to.
+ *
+ * A topic *is* the discussion, an answer and a comment name theirs in
+ * `topic_id`. This is what an editor returns to after saving: a comment has no
+ * page of its own, and landing on `#/topic/{comment_id}` would show "该地址不是主题".
+ * Undefined for a deletion placeholder, which carries no usable location.
+ */
+export function topicIdOf(content: PublicContent): string | undefined {
+ if (isDeleted(content)) return undefined;
+ if (isTopic(content)) return content.id;
+ return content.topic_id;
+}
+
+/**
  * Follow an opaque cursor to the end of a list.
  *
  * The editor needs the whole board and tag catalogue, not just the first page:

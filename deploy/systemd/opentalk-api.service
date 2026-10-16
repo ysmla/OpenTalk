@@ -1,0 +1,31 @@
+[Unit]
+Description=OpenTalk API（对外 HTTP 服务，内网监听，TLS 由 OpenResty 终止）
+After=network-online.target
+Wants=network-online.target
+# 依赖不可用时（数据库/Redis 掉线）不要无限重启，配合 /ready 告警。
+StartLimitIntervalSec=60
+StartLimitBurst=10
+
+[Service]
+Type=simple
+User=opentalk
+Group=opentalk
+# current 是指向 releases/<时间戳> 的符号链接，由 deploy/release.ps1 切换，回滚就是换回上一个链接。
+WorkingDirectory=/srv/opentalk/current
+# 部署时把环境变量写进这个文件（chmod 600，owner opentalk）；四个二进制读同一份。
+EnvironmentFile=/etc/opentalk/api.env
+ExecStart=/srv/opentalk/current/bin/api
+Restart=on-failure
+RestartSec=3
+
+# 权限收紧：只允许写自己的媒体目录（用户上传的原图）与临时目录。
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/srv/opentalk/data
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+
+[Install]
+WantedBy=multi-user.target

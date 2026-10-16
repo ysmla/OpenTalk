@@ -41,18 +41,21 @@ export function HomeView({ user, sessionReady, onLogout }: HomeViewProps) {
  return <main>
   <p className="eyebrow">OPENTALK</p>
   <h1>交流想法，找到答案。</h1>
-  <p>一个支持讨论、问答与匿名交流的小型社区。</p>
-  <section aria-label="开发预览状态">
-   <h2>开发预览</h2>
-   <p>论坛功能正在建设中，当前页面用于确认前后端连接。</p>
-   <p role="status">{status === 'loading' ? '正在连接服务…' : status === 'online' ? '已连接 API，业务功能尚未上线。' : '暂时无法连接服务，请稍后重试。'}</p>
-   {status === 'offline' && <button onClick={() => setAttempt(n => n + 1)}>重新连接</button>}
-  </section>
+   <p>一个支持讨论、问答与匿名交流的小型社区。</p>
+   <nav className="links" aria-label="主要内容">
+    <a href="#/topics">浏览主题列表</a>
+    <a href="#/search">搜索内容</a>
+    {user
+     ? <a href="#/new">发帖 / 提问</a>
+     : <a href="#/login">登录后发帖</a>}
+   </nav>
+   {status === 'offline' && <Status>暂时无法连接服务，请稍后重试。</Status>}
   <section aria-labelledby="topics-heading">
    <h2 id="topics-heading">主题列表</h2>
    <p>浏览全部板块的帖子与问题，可按板块筛选、按最新或最近活跃排序。</p>
    <nav className="links" aria-label="主题入口">
     <a href="#/topics">查看主题列表</a>
+    {user && <a href="#/new">发帖 / 提问</a>}
    </nav>
   </section>
   <section aria-labelledby="account-heading">

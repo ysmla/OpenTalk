@@ -15,15 +15,18 @@ import (
 //
 // Two properties are deliberate.
 //
-// **Email is opt-in.** A user who has never opened this screen has no row, and no row reads as "all off".
-// The alternative — inventing a default that starts mailing people who never asked — is exactly what the
-// requirements forbid ("不设置未经确认的默认值"), and it is the only safe direction for a setting whose
-// failure mode is unwanted mail. In-site notifications are unaffected: they are written regardless, which
-// is also what "关闭邮件不影响站内通知" says.
+// **What a new account starts with is decided in one place, and it is not "all off".** `auth.Store.CreateUser`
+// writes the row in the same transaction as the account, using `DefaultEmailPreferences`
+// (`server/internal/auth/users.go`): answer and reply mail on, comment mail off. Registration goes through
+// that path, so a reader who has never opened this screen does have stored flags — and those flags are what
+// delivery reads. The alternative, seen only for an account with no row at all (an account created before
+// those defaults existed), reads as all-false: a missing row means nothing was ever chosen, and inventing a
+// value there is the one direction this setting must not fail in.
 //
 // **The write replaces all three flags, and a partial body is refused.** A PUT that silently treated a
 // missing field as false would turn "turn on replies" into "turn off comments and answers", which is a
-// data-losing surprise rather than a validation error.
+// data-losing surprise rather than a validation error. In-site notifications are unaffected by any of this:
+// they are written regardless, which is what "关闭邮件不影响站内通知" says.
 
 // notificationPreferences mirrors the NotificationPreferences schema.
 type notificationPreferences struct {

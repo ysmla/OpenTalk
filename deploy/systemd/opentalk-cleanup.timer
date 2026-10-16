@@ -1,0 +1,11 @@
+[Unit]
+Description=每天 04:00 运行 OpenTalk 清理任务
+
+[Timer]
+OnCalendar=*-*-* 04:00:00
+# 关机错过了就尽快补跑一次，而不是等明天。
+Persistent=true
+RandomizedDelaySec=600
+
+[Install]
+WantedBy=timers.target

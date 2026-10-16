@@ -67,7 +67,8 @@ export function ReportButton({ contentId, sessionReady, signedIn, onUnauthentica
  }
 
  return <>
-  <button type="button" className="link" disabled={!sessionReady} onClick={handleClick}>
+  {/* 未登录时按钮仍可点：点击会走登录流程，而不是变成一个点了没反应的死按钮。 */}
+  <button type="button" className="link" onClick={handleClick}>
    {open ? '取消举报' : '举报'}
   </button>
   {open && <form className="report-form" onSubmit={handleSubmit}>

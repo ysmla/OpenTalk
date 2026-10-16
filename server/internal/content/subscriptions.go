@@ -73,6 +73,22 @@ ON DUPLICATE KEY UPDATE email_override=incoming.email_override`,
 	return err
 }
 
+// ClearTopicSubscription removes one reader's override for one topic, returning that topic to
+// `inherit`.
+//
+// Deleting is not the same as storing `disabled`, and the difference is visible to the reader on the
+// next read: a removed row reads as `inherit`, so the topic follows the global preference again. That
+// is what "取消订阅" means here — the reader is withdrawing the per-topic choice, not choosing the
+// opposite of it. The unsubscribe link in a mail therefore clears the row: the reader asked to stop
+// this topic's mail, and the state they are left in is the one they had before ever setting it.
+//
+// Removing a row that is not there is a no-op, so a twice-used link succeeds both times.
+func (s Store) ClearTopicSubscription(ctx context.Context, userID, topicID uint64) error {
+	_, err := s.DB.ExecContext(ctx,
+		`DELETE FROM topic_subscriptions WHERE user_id=? AND topic_id=?`, userID, topicID)
+	return err
+}
+
 // unsubscribeTokenTTL bounds how long a link in an old mail keeps working. The mail may sit in an inbox for
 // a while, so the window is generous; it exists so a leaked archive of old mail is not a permanent key.
 const unsubscribeTokenTTL = 180 * 24 * time.Hour
@@ -257,14 +273,20 @@ func (d Deps) setSubscription(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// unsubscribeEmail consumes a token from a notification mail and disables mail for that one topic.
+// unsubscribeEmail consumes a token from a notification mail and cancels that one topic's subscription.
 //
 // It is the only endpoint here that does not require a session, because the whole point is to let somebody
 // act on a mail without an account flow. What stands in for authentication is the signature and the scope
-// inside it: the token names exactly one account and one topic, so the most a leaked link can do is turn
-// off mail for the topic it was minted for. It cannot read anything, and it cannot touch the global
+// inside it: the token names exactly one account and one topic, so the most a leaked link can do is cancel
+// the subscription for the topic it was minted for. It cannot read anything, and it cannot touch the global
 // preferences — a reader who wants to stop all mail does that in the settings screen, where the effect is
 // visible.
+//
+// Cancelling clears the per-topic row rather than storing `disabled` (see ClearTopicSubscription): the
+// reader is withdrawing their per-topic choice, so the topic goes back to following the global preference.
+// That does mean an account whose global reply/answer mail is on will keep receiving mail for this topic
+// after unsubscribing — which is exactly what "inherit" promises, and why the settings screen remains the
+// place to stop mail altogether.
 //
 // The route is POST, not GET, and the middleware requires our own Origin: a mail scanner that follows
 // links must not be able to unsubscribe somebody by fetching the URL.
@@ -280,7 +302,7 @@ func (d Deps) unsubscribeEmail(w http.ResponseWriter, r *http.Request) {
 		httpapi.Fail(w, r, 400, "INVALID_TOKEN", "退订链接无效或已过期")
 		return
 	}
-	if err := d.Store.SaveTopicSubscription(r.Context(), userID, topicID, overrideDisabled); err != nil {
+	if err := d.Store.ClearTopicSubscription(r.Context(), userID, topicID); err != nil {
 		d.failDependency(w, r, err)
 		return
 	}

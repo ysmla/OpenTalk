@@ -1,0 +1,15 @@
+[Unit]
+Description=OpenTalk 清理任务（待用附件、孤儿附件、到期归档原文）
+Documentation=file:/srv/opentalk/current/docs/deployment.md
+
+[Service]
+Type=oneshot
+User=opentalk
+Group=opentalk
+WorkingDirectory=/srv/opentalk/current
+EnvironmentFile=/etc/opentalk/api.env
+# 清理不是 API 内的定时器：多实例部署时每个实例都会跑一遍，所以交给外部调度。
+ExecStart=/srv/opentalk/current/bin/admin -action cleanup
+
+# 失败可重试：每个阶段先标 pending_delete 再删文件，只有文件确实删除才置 deleted，
+# 因此中断或失败都会在下次重新处理，重复执行是安全的。

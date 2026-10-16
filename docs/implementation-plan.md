@@ -141,8 +141,8 @@ cd ..\scripts ; python build_openapi.py
    - **6b 站内通知的读取接口**（已完成 2026-10-15）
      已实现 `GET /me/notifications`（仅接收者本人可读，按 id 倒序、游标翻页且游标不携带内部用户 ID）与 `PUT /me/notifications/{id}/read`（重复标记幂等，他人的或不存在的通知一律 404）。读取时按内容的**当前**可见性附加 actor：不可见则整条不附作者、摘要只说"该内容已被删除或不可见"；可见则按与其它读取相同的匿名规则渲染（匿名楼主显示"楼主"、其他匿名参与者显示"匿名#N"）。站内通知行不存正文，所以删除或隐藏之后不会从列表里泄出正文。合同把这两个操作标为 implemented（现为 31 implemented / 26 planned，26 条已实现路径）。
    - **6c 邮件投递 worker 与偏好/订阅/退订接口**（参数已确认 2026-10-15，分三片）
-     - **6c-1 邮件偏好接口**（已完成 2026-10-15）：`GET/PUT /me/notification-preferences`。未设置过的账号读作三项全关（邮件是选择性开启，不发明默认值）；PUT 整体替换，缺项按 422 拒绝，避免"只改一项"被静默当成"其余关掉"。
-     - **6c-2 订阅与退订接口**（已完成 2026-10-15）：`GET/PUT /me/subscriptions/{topic_id}`（未设置读作 inherit；请求体 topic_id 必须与路径一致；隐藏/删除主题 404）、`POST /subscriptions/unsubscribe`（签名令牌只命名一个账号与一个主题，过期时间在签名载荷内，密钥为 APP_SECRET 的独立子密钥；POST + 精确 Origin 防止邮件扫描器误退订；最坏只能关掉该主题的邮件，读不到内容也改不动全局偏好）。
+     - **6c-1 邮件偏好接口**（已完成 2026-10-15）：`GET/PUT /me/notification-preferences`。新账号的默认值由 `auth.Store.CreateUser` 与 `DefaultEmailPreferences` 决定：**回答与回复默认开、评论默认关**（邮件不是"默认全关再逐项开启"）；只有"没有任何偏好行"的账号才读作三项全关，因为那是从未确认过的状态。PUT 整体替换，缺项按 422 拒绝，避免"只改一项"被静默当成"其余关掉"。
+     - **6c-2 订阅与退订接口**（已完成 2026-10-15）：`GET/PUT /me/subscriptions/{topic_id}`（没有设置行时读作 inherit；请求体 topic_id 必须与路径一致；隐藏/删除主题 404）、`POST /subscriptions/unsubscribe`（签名令牌只命名一个账号与一个主题，过期时间在签名载荷内，密钥为 APP_SECRET 的独立子密钥；POST + 精确 Origin 防止邮件扫描器误退订；最坏只能取消该主题的订阅，读不到内容也改不动全局偏好）。**取消订阅是删掉该主题的设置行**（`ClearTopicSubscription`），因此读回 `inherit`、该主题回到跟随全局，而不是写入 `disabled`；重复提交幂等返回 204。
      - **6c-3 邮件投递**（已完成 2026-10-15，含**真实投递验证**，见 [验证报告](verification-2026-10-15-delivery.md)）：逻辑层按 `FOR UPDATE SKIP LOCKED` + 租约取件，按（接收者, 主题）合并成一封，发送前重新检查**内容可见性、接收者、主题级订阅与全局偏好、小时上限**四件事，超限延后而非丢弃，失败按退避重试并在预算用完后放弃；邮件正文只有摘要、标题、主题链接与退订链接，**从不提及作者**。二进制 `cmd/worker` 支持 `-once`（计划任务）、`-interval`（常驻循环）、`-dry-run`（只看队列深度）与 `-action show`（打印配置摘要、密码不回显）；SMTP 未配置时**不发信也不丢事件**。**真发过一封**：临时 schema 复制真实 SMTP 设置、经真实接口排队一条事件、`worker -once` 报 `sent=1`，收件人确认收件箱已收到；临时 schema（含那个邮箱地址）已删除。
 
 7. **搜索**（已完成 2026-10-15，含索引优化与筛选控件，见 [验证报告](verification-2026-10-15-search.md)）

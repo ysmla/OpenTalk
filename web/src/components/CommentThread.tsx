@@ -1,5 +1,6 @@
 import type { components } from '../api/generated';
 import { Alert } from './Alert';
+import { ReportButton } from './ReportButton';
 import { authorLabel, replyTargetLabel } from './ContentMeta';
 import { Markdown } from './Markdown';
 import { unreferencedAttachments } from '../lib/attachments';
@@ -70,16 +71,21 @@ type CommentThreadProps = {
  onDelete: (comment: Comment) => void;
  /** Present only while this thread has another page of replies to fetch. */
  more?: { loading: boolean; onLoadMore: () => void };
+ /** 举报入口对任何登录读者开放；未登录时会先走登录流程。 */
+ signedIn: boolean;
+ onUnauthenticated: () => void;
 };
 
 /** The edit link and delete button shown for a comment the viewer wrote. */
-function CommentActions({ comment, canComment, actions, deleting, onReply, onDelete }: {
+function CommentActions({ comment, canComment, actions, deleting, onReply, onDelete, signedIn, onUnauthenticated }: {
  comment: Comment;
  canComment: boolean;
  actions: { canEdit: boolean; canDelete: boolean };
  deleting: boolean;
  onReply: (target: Comment) => void;
  onDelete: (comment: Comment) => void;
+ signedIn: boolean;
+ onUnauthenticated: () => void;
 }) {
  return <div className="comment-actions">
   {canComment && <button type="button" className="link" onClick={() => onReply(comment)}>回复</button>}
@@ -87,10 +93,17 @@ function CommentActions({ comment, canComment, actions, deleting, onReply, onDel
   {actions.canDelete && <button type="button" className="link" disabled={deleting} onClick={() => onDelete(comment)}>
    {deleting ? '正在删除…' : '删除'}
   </button>}
+  {/* 举报对任何登录读者开放，与"是不是我写的"无关；未登录时会先走登录流程。 */}
+  <ReportButton
+   contentId={comment.id}
+   sessionReady={signedIn}
+   signedIn={signedIn}
+   onUnauthenticated={onUnauthenticated}
+  />
  </div>;
 }
 
-export function CommentThread({ node, authors, canComment, onReply, actionsFor, deletingId, onDelete, more }: CommentThreadProps) {
+export function CommentThread({ node, authors, canComment, onReply, actionsFor, deletingId, onDelete, more, signedIn, onUnauthenticated }: CommentThreadProps) {
  return <li className="comment">
   <CommentBody comment={node.comment} />
   <CommentActions
@@ -100,6 +113,8 @@ export function CommentThread({ node, authors, canComment, onReply, actionsFor, 
    deleting={deletingId === node.comment.id}
    onReply={onReply}
    onDelete={onDelete}
+   signedIn={signedIn}
+   onUnauthenticated={onUnauthenticated}
   />
   {node.replies.length > 0 && <ul className="replies">
    {node.replies.map(reply => <li className="comment reply" key={reply.id}>
@@ -112,6 +127,8 @@ export function CommentThread({ node, authors, canComment, onReply, actionsFor, 
      deleting={deletingId === reply.id}
      onReply={onReply}
      onDelete={onDelete}
+     signedIn={signedIn}
+     onUnauthenticated={onUnauthenticated}
     />
    </li>)}
   </ul>}
@@ -162,10 +179,12 @@ type CommentListProps = {
  onDelete: (comment: Comment) => void;
  /** Replies of a thread root page on their own cursor, one root at a time. */
  threadMore?: (rootId: string) => { loading: boolean; onLoadMore: () => void } | undefined;
+ signedIn: boolean;
+ onUnauthenticated: () => void;
 };
 
 /** Top-level comments plus their replies, in the order the API returned them. */
-export function CommentList({ comments, canComment, onReply, actionsFor, deletingId, onDelete, threadMore }: CommentListProps) {
+export function CommentList({ comments, canComment, onReply, actionsFor, deletingId, onDelete, threadMore, signedIn, onUnauthenticated }: CommentListProps) {
  const authors = authorById(comments);
  return <ul className="comments">
   {buildCommentTree(comments).map(node => <CommentThread
@@ -178,6 +197,8 @@ export function CommentList({ comments, canComment, onReply, actionsFor, deletin
    deletingId={deletingId}
    onDelete={onDelete}
    more={threadMore?.(node.comment.id)}
+   signedIn={signedIn}
+   onUnauthenticated={onUnauthenticated}
   />)}
  </ul>;
 }
@@ -192,12 +213,26 @@ type CommentComposerProps = {
  onCancel?: () => void;
  pending: boolean;
  failure?: Failure;
- hint?: string;
+ /**
+  * 当前用户在这个主题下是否被服务端强制匿名（匿名楼主的自答、评论与回复）。
+  * 为 true 时开关固定选中且不可关闭：服务端同样强制执行，前端只是如实展示。
+  */
+ forceAnonymous: boolean;
+ /** 本条评论/回复是否以匿名身份发布。由调用方持有，回复与评论共用同一选择。 */
+ anonymous: boolean;
+ onAnonymousChange: (anonymous: boolean) => void;
  submitLabel?: string;
 };
 
-/** The one-shot comment/reply box. The topic and answer id live in the caller. */
-export function CommentComposer({ label, target, value, onChange, onSubmit, onCancel, pending, failure, hint, submitLabel = '发布' }: CommentComposerProps) {
+/**
+ * The one-shot comment/reply box. The topic and answer id live in the caller.
+ *
+ * 身份按条选择（requirements.md:19）：每条评论和回复都可以单独决定是否匿名，
+ * 因此开关与正文一起提交，而不是在主题级设置一次。匿名楼主的开关被锁定，
+ * 这与服务端的强制匿名一致，用户无法通过界面绕过。
+ */
+export function CommentComposer({ label, target, value, onChange, onSubmit, onCancel, pending, failure, forceAnonymous, anonymous, onAnonymousChange, submitLabel = '发布' }: CommentComposerProps) {
+ const anonymousChecked = forceAnonymous || anonymous;
  return <form className="composer" onSubmit={event => { event.preventDefault(); onSubmit(); }}>
   <div className="field">
    <label htmlFor="comment-body">{label}</label>
@@ -208,7 +243,20 @@ export function CommentComposer({ label, target, value, onChange, onSubmit, onCa
     onChange={event => onChange(event.target.value)}
    />
    {target && <p className="hint">正在回复 {authorLabel(target.author)}，发布后会显示在对应评论的回复里。</p>}
-   {hint && <p className="hint">{hint}</p>}
+   <p className="hint">支持 Markdown：原始 HTML 会被转义，链接只允许 http、https 与 mailto。站外链接会先经过提示页。</p>
+  </div>
+  <div className="field">
+   <span className="label">身份</span>
+   <label className="checkbox">
+    <input
+     type="checkbox"
+     checked={anonymousChecked}
+     disabled={pending || forceAnonymous}
+     onChange={event => onAnonymousChange(event.target.checked)}
+    />
+    匿名发表这条{target ? '回复' : '评论'}（发布后不可切换）
+   </label>
+   {forceAnonymous && <p className="hint">你在这个主题下被强制匿名，展示为楼主，无法取消。</p>}
   </div>
   <Alert failure={failure} />
   <div className="actions">

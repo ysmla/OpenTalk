@@ -5,6 +5,7 @@ import { authorLabel } from '../components/ContentMeta';
 import { AttachmentGallery } from '../components/AttachmentGallery';
 import { ImageUploader, type UploadItem } from '../components/ImageUploader';
 import { Markdown } from '../components/Markdown';
+import { ReportButton } from '../components/ReportButton';
 import { CommentsSection } from './CommentsSection';
 import { formatDateTime } from '../lib/format';
 import { describeError, isStatus, type Failure } from '../lib/messages';
@@ -159,6 +160,13 @@ export function AnswersSection({ topicId, permissions, isLocked, topicIsLocked, 
      >
       {deletingId === answer.id ? '正在删除…' : '删除'}
      </button>}
+     {/* 举报对任何登录读者开放，与"是不是我写的"无关；未登录时会先走登录流程。 */}
+     <ReportButton
+      contentId={answer.id}
+      sessionReady={signedIn}
+      signedIn={signedIn}
+      onUnauthenticated={onUnauthenticated}
+     />
     </div>
     <CommentsSection
      topicId={topicId}

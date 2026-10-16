@@ -24,7 +24,12 @@ export type RouteLocation =
  | { name: 'topic'; id: string }
  | { name: 'new'; boardId?: string }
  | { name: 'search'; q?: string; boardId?: string; tagId?: string }
- | { name: 'edit'; id: string };
+ | { name: 'edit'; id: string }
+ /**
+  * 邮件退订确认页。令牌只从查询串读取：它由服务端签发、只出现在通知邮件里，
+  * 不是身份，也不是一条应当被拼进路径的链接参数。
+  */
+ | { name: 'unsubscribe'; token?: string };
 
 export type RouteName = RouteLocation['name'];
 
@@ -117,6 +122,13 @@ export function parseHash(hash: string): RouteLocation {
    ...(tagId === '' ? {} : { tagId }),
   };
  }
+ // The unsubscribe screen is reached from a mail, so it must be a known route:
+ // an unknown path falls back to home *before* the token is ever examined, which
+ // would make every unsubscribe link look like the home page.
+ if (segments[0] === 'unsubscribe') {
+  const token = (query.get('token') ?? '').trim();
+  return token === '' ? { name: 'unsubscribe' } : { name: 'unsubscribe', token };
+ }
  const name = PARAMETERISED_ROUTES[segments[0]];
  const id = segments[1];
  if (name && id) {
@@ -164,6 +176,11 @@ export function routeHref(location: RouteLocation): string {
    if (location.tagId) search.set('tag_id', location.tagId);
    const query = search.toString();
    return query === '' ? '#/search' : `#/search?${query}`;
+  }
+  case 'unsubscribe': {
+   // The token is a signed, single-purpose credential; encodeURIComponent keeps
+   // it intact through the URL without giving it any other meaning.
+   return location.token ? `#/unsubscribe?token=${encodeURIComponent(location.token)}` : '#/unsubscribe';
   }
   case 'board': return `#/board/${encodeURIComponent(location.id)}`;
   case 'tag': return `#/tag/${encodeURIComponent(location.id)}`;

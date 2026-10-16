@@ -12,15 +12,41 @@
 
 ## 1. 构建
 
-```bash
-cd server && CGO_ENABLED=0 go build -trimpath -o ../bin/api ./cmd/api \
-  && CGO_ENABLED=0 go build -trimpath -o ../bin/worker ./cmd/worker \
-  && CGO_ENABLED=0 go build -trimpath -o ../bin/admin ./cmd/admin \
-  && CGO_ENABLED=0 go build -trimpath -o ../bin/migrate ./cmd/migrate
-cd ../web && npm ci && npm run build      # 产出 web/dist
+**在开发机构建，把产物传上去；不要在服务器上编译。** 仓库根目录：
+
+```powershell
+# 生产产物必须在 Linux 上运行，所以交叉编译（Windows 默认产出 .exe，传上去会 "cannot execute binary file"）。
+# 项目是纯 Go、无 cgo，可以直接交叉编译。
+$env:CGO_ENABLED='0'; $env:GOOS='linux'; $env:GOARCH='amd64'   # 服务器是 arm64 就改成 arm64
+cd server
+go build -trimpath -ldflags '-s -w' -o ..\dist-deploy\bin\api     ./cmd/api
+go build -trimpath -ldflags '-s -w' -o ..\dist-deploy\bin\worker  ./cmd/worker
+go build -trimpath -ldflags '-s -w' -o ..\dist-deploy\bin\admin   ./cmd/admin
+go build -trimpath -ldflags '-s -w' -o ..\dist-deploy\bin\migrate ./cmd/migrate
+cd ..\web
+npm ci
+npm run build                                  # 产出 web\dist
+# 把前端与部署件一起放进发布包
+xcopy /E /I /Y web\dist ..\dist-deploy\web
+xcopy /E /I /Y deploy ..\dist-deploy\deploy
 ```
 
+检查产物真的是 Linux 二进制（前四个字节是 `7F 45 4C 46`，即 ELF）：`deploy/release.ps1` 会在上传前替你检查，不通过就直接退出。
+
 三个二进制各有分工：`api` 是对外服务，`worker` 送通知邮件，`admin`/`migrate` 是运维命令。**`worker` 必须单独常驻**：它不在 API 进程里，API 只负责把事件写进 outbox。
+
+### 1b. 一键发布（推荐）
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File deploy\release.ps1 `
+  -Server 1.2.3.4 -Domain opentalk.example.com
+```
+
+它按顺序做：本地产物自检（含 ELF 校验）→ scp 到 `/tmp/opentalk-release-<时间戳>` → 服务端前置检查（env 文件、`opentalk` 用户、OpenResty/nginx、systemd）→ 装二进制到 `/srv/opentalk/releases/<时间戳>/bin` → 装前端 → 切换 `current` 符号链接 → 装 systemd 单元 → 装代理配置并 `-t` → 迁移 → 重启 → 清理 → 跑 `smoke.ps1`。任一步失败就停下，不会留下"API 在跑但页面 404"的半成品。
+
+常用参数：`-User`（默认 root）、`-WebRoot`（默认 `/srv/opentalk`）、`-ProxyReload`（默认 `openresty`，用官方 nginx 就传 `nginx`）、`-ProxyConfDir`、`-DryRun`（只打印计划，不改服务器）、`-SkipMigrate`、`-SkipSmoke`。
+
+回滚：`ssh` 上去把 `current` 指回上一个 releases 目录并重启 `opentalk-api`、`opentalk-worker` 即可（见第 6 节）。
 
 ## 2. 数据库迁移
 
@@ -41,6 +67,54 @@ cd ../web && npm ci && npm run build      # 产出 web/dist
 TLS 在代理层终止。代理需要做三件事：转发到 `api`、**覆盖** `X-Forwarded-For`、保留 `Host`。只有做到这三件事之后，才可以把 `TRUST_PROXY` 设为 `true`。
 
 邮件里的链接使用 `APP_ORIGIN`，因此它必须是外部可访问的 `https://` 地址。
+
+### OpenResty 上的具体做法
+
+仓库里的 `deploy/nginx/opentalk.conf` 只用了标准模块（`proxy_pass`、`try_files`、`ssl`），**不依赖任何 Lua 模块**，所以 OpenResty 与官方 nginx 都能直接用。与 nginx 的差异只有三处：
+
+1. **站点文件位置**：OpenResty 一般没有 `sites-available/sites-enabled`，把配置放进 `conf.d` 并在 `nginx.conf` 的 `http{}` 里 `include conf.d/*.conf;`（默认通常已有）：
+
+   ```bash
+   sudo cp deploy/nginx/opentalk.conf /usr/local/openresty/nginx/conf/conf.d/opentalk.conf
+   sudo sed -i 's/opentalk\.example\.com/你的域名/g' /usr/local/openresty/nginx/conf/conf.d/opentalk.conf
+   sudo openresty -t && sudo systemctl reload openresty
+   ```
+
+2. **静态文件的读权限**：worker 进程以降权用户运行（Debian 常为 `www-data`，源码编译常为 `nobody`）。`/srv/opentalk/current` 是符号链接，整条路径都要可进入：
+
+   ```bash
+   ps -o user= -C openresty | sort -u          # 看清 worker 用哪个用户
+   sudo chmod 755 /srv /srv/opentalk
+   sudo chmod -R a+rX /srv/opentalk/releases
+   ```
+
+   漏掉这步的表现是 **403**（不是 404），这是最常见的坑。
+
+3. **版本**：配置用了 `http2 on;` 新写法，需要 OpenResty ≥ 1.25.3.1。老版本把它改成 `listen 443 ssl http2;` 即可（`-t` 会明确报 `unknown directive "http2"`）。
+
+**证书**用 webroot 模式，不碰现有配置。先在 80 端口的 server 里放行 ACME 目录（`location /.well-known/acme-challenge/ { root /var/www/certbot; }`），然后：
+
+```bash
+sudo mkdir -p /var/www/certbot
+sudo certbot certonly --webroot -w /var/www/certbot -d 你的域名 \
+  --deploy-hook "systemctl reload openresty"
+```
+
+不要装 `python3-certbot-nginx`：它假设标准 nginx 布局，在 OpenResty 上常报错。证书路径就是配置里写的 `/etc/letsencrypt/live/<域名>/`；续期由 certbot 的 timer 自动完成，`--deploy-hook` 负责续期后重载。
+
+**静态文件与 SPA 回退是代理的职责**：Go API 只提供 JSON、`/media`、`/health`、`/ready`，**不服务 `web/dist`**。配置里 `root /srv/opentalk/current/web` + `try_files $uri $uri/ /index.html` 就是这件事；漏了它首页会 404，`deploy/smoke.ps1` 会直接报出来。
+
+## 4b. 部署后的验证
+
+```powershell
+# 开发机（能解析到该域名）。带管理员账号时会额外做一次真实登录，证明 Origin 校验、Cookie 与 CSRF 都对。
+powershell -NoProfile -ExecutionPolicy Bypass -File deploy\smoke.ps1 -Base https://你的域名 `
+  -AdminEmail you@example.com -AdminPassword '...'
+```
+
+期望输出 `SMOKE_OK`。它检查：`/health`、`/ready`（MySQL/Redis/schema 版本）、首页与 SPA 回退、`/api` 同源转发、`/media` 未知 key 404、三个公开读接口、游客访问会话端点返回 401。**前端没被代理服务时它会明确失败**，这是最常见的部署错误。
+
+冒烟脚本不点界面，所以**还必须用真实浏览器走一遍**：登录 → 发帖 → 评论 → 传图并确认显示 → 搜索 → 举报 → `/me` 三个页面。然后确认邮件真的能收到：配好 SMTP、让第二个账号回答一次，检查收件箱与 `journalctl -u opentalk-worker` 的每轮摘要。
 
 ## 5. 备份与恢复
 
@@ -64,7 +138,15 @@ mysql -uroot opentalk_restore < opentalk-2026-10-15.sql
 
 ## 6. 回滚
 
-1. 应用：保留上一个版本的二进制与 `web/dist`，切回即可（无状态）。
+1. 应用：`deploy/release.ps1` 每次发布都会把二进制与前端装进 `/srv/opentalk/releases/<时间戳>/`，并把 `current` 指向它。回滚就是换回上一个链接：
+
+   ```bash
+   ls -1 /srv/opentalk/releases            # 找上一个版本
+   ln -sfn /srv/opentalk/releases/<上一个> /srv/opentalk/current
+   systemctl restart opentalk-api opentalk-worker
+   ```
+
+   进程无状态，因此这一步就是全部；前端也随链接一起回到旧版本。
 2. 数据库：迁移只前滚，回退业务数据走**备份恢复**，不要依赖 `down.sql`。
 3. 通知邮件：把 `worker` 停掉即可——事件留在 outbox，恢复后继续投递，不会丢。
 
@@ -76,6 +158,8 @@ mysql -uroot opentalk_restore < opentalk-2026-10-15.sql
 
 ## 8. 未在本机验证的部分（不要当成已验证）
 
-- 反向代理配置、证书签发与续期：本文只给要求，**没有在真实服务器上验证过**。
-- 真实服务器上的 systemd/容器编排：未验证。
+- 反向代理配置、证书签发与续期：`deploy/nginx/opentalk.conf` 与本文的 OpenResty 步骤**没有在真实服务器上跑过**；已在本机用等价代理验证过"前端由代理提供、`/api` 同源转发"这条链路能通过 `deploy/smoke.ps1`，但真实 OpenResty、DNS 与证书仍需你按第 4 节确认。
+- `deploy/release.ps1` 的远端步骤没有在真实主机上执行过（只做了 `-DryRun` 与语法检查），第一次请开一个新终端逐行看输出。
+- 真实服务器上的 systemd 编排：未验证（单元文件只做了语法与路径设计）。
 - 生产规模的备份时间与恢复时长：本机数据量很小，**没有测量**。
+- 生产 SMTP 投递：只在开发机真发过一封；发信域名、退信与配额未在生产验证。

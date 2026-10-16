@@ -52,7 +52,7 @@ erDiagram
 | attachments | id, owner_id, storage_key, mime_type, byte_size, status, delete_after | storage_key 唯一且不含身份；先上传后关联；待关联图片仅所有者可读；未关联的待用附件24小时后清除，内容删除后不再被引用的附件7天后物理清除 |
 | content_attachments | content_id, attachment_id | 联合主键；附件通过可见关联内容授权，不能只依靠静态文件 URL |
 | notification_preferences | user_id, email_on_comment, email_on_answer, email_on_reply | user_id 主键；注册时的缺省值为评论邮件关闭、回答与回复邮件开启（2026-10-14定），用户可在设置页修改 |
-| topic_subscriptions | user_id, topic_id, email_override | 联合主键；override 为 inherit/enabled/disabled；disabled即取消该篇邮件，单篇设置覆盖全局默认 |
+| topic_subscriptions | user_id, topic_id, email_override | 联合主键；override 为 inherit/enabled/disabled；单篇设置覆盖全局默认。**没有这一行＝inherit（跟随全局）**；邮件里的退订链接、以及界面上的"跟随全局"都表现为删除该行，而"这个主题不发邮件"才写入 disabled |
 | notifications | id, recipient_id, event_key, event_type, content_id, read_at | 唯一(recipient_id,event_key)；避免存储作者身份和正文快照 |
 | outbox_events | id, event_key, event_type, content_id, recipient_id, status, available_at, lease_until, lease_token, attempts | 与业务写入同一事务；event_key 唯一；工作进程生成通知/邮件任务；租约令牌防止旧工作进程确认 |
 | email_deliveries | id, recipient_id, event_key, purpose, content_id, status, next_attempt_at, lease_until, attempts, sent_at | 唯一(recipient_id,event_key,purpose)；发送前读取内容和偏好；不持久复制删除正文 |
